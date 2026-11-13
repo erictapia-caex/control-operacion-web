@@ -157,6 +157,19 @@ input:disabled,select:disabled{opacity:.6}
 .vivo .vbar{height:7px;border-radius:4px;background:#12161b;margin-top:10px}
 .vivo .vbar i{display:block;height:100%;border-radius:4px;background:var(--am)}
 .vivo.apagado{opacity:.55}
+.vsel{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.vsel button{background:#12161b;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 4px;font-size:16px;font-weight:800;line-height:1.15}
+.vsel button small{display:block;font-size:11px;font-weight:600;color:var(--sub);margin-top:3px}
+.vsel button.sel{background:var(--am);color:#111;border-color:var(--am)}.vsel button.sel small{color:#3a2f00}
+.vsel button.todos{grid-column:1/-1}
+.vsel button .pt{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.vreg{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.vreg h4{margin:0 0 6px;color:var(--am);font-size:14px}
+.vreg .lin{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed #2a313a;font-size:14px}
+.vreg .lin:last-child{border-bottom:0}
+.vreg .lin b{white-space:nowrap;font-variant-numeric:tabular-nums}
+.vreg .lin i{display:block;color:var(--sub);font-size:12px;font-style:normal}
+.vreg .curso{color:#ffe08a}
 .pill{font-size:12px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap}
 .pill.op{background:#123d27;color:#6ee7a6}.pill.sr{background:#3a2f0a;color:#ffe08a}.pill.ce{background:#2b333d;color:var(--sub)}
 .vgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:2px 10px;font-size:14px}
@@ -227,6 +240,8 @@ textarea{width:100%;font:inherit;font-size:16px;padding:12px;border-radius:10px;
       <div class="total"><span>Toneladas flota</span><b id="vivoT">0</b></div>
     </div>
     <div id="vivoInfo" class="dur" style="margin-bottom:8px"></div>
+    <label>Elige un CAEX para ver su turno en vivo</label>
+    <div id="vivoSel" class="vsel"></div>
     <div id="vivoLista"></div>
   </section>
   </div>
@@ -364,7 +379,32 @@ function nuevo(){ return {operador:'', caex:'', fecha:hoy(), grupo:'', turno:'',
 function hoy(){ const d=new Date(); return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate()); }
 function p2(n){ return (n<10?'0':'')+n; }
 function ahora(){ const d=new Date(); return p2(d.getHours())+':'+p2(d.getMinutes()); }
-function guardar(){ kvSet('draft', draft); draft.guardadoA=ahora(); marcaGuardado(); }
+function guardar(){ kvSet('draft', draft); draft.guardadoA=ahora(); marcaGuardado(); programarEstado(); }
+/* ====== Estado del turno en vivo (horas de turno, colación y detenciones) ====== */
+let tEstado;
+function programarEstado(){ clearTimeout(tEstado); tEstado=setTimeout(prepararEstado,2500); }
+async function prepararEstado(){
+  if(!draft || !draft.caex || !draft.horaInicio) return;
+  if(!draft.tid){ draft.tid=Date.now()+'-'+Math.random().toString(36).slice(2,7); kvSet('draft',draft); }
+  const e={accion:'estado', tid:draft.tid, ts:Date.now(), caex:draft.caex, operador:(draft.operador||'').trim(), fecha:draft.fecha, grupo:draft.grupo, turno:draft.turno,
+    horaInicio:draft.horaInicio, colIni:draft.colIni, colFin:draft.colFin, horaFin:draft.horaFin,
+    detenciones:draft.detenciones.filter(d=>d.tipo||d.inicio).map(d=>({tipo:d.tipo||'',inicio:d.inicio||'',fin:d.fin||'',litros:d.tipo==='Combustible'?(d.litros||''):'',comentario:d.tipo==='Otro'?String(d.comentario||'').trim():''}))};
+  const pend=(await kvGet('estadoPend'))||{}; pend[e.tid]=e; await kvSet('estadoPend',pend);
+  enviarEstados();
+}
+let enviandoE=false;
+async function enviarEstados(){
+  if(enviandoE || !navigator.onLine) return; enviandoE=true;
+  try{
+    const pend=(await kvGet('estadoPend'))||{};
+    for(const tid of Object.keys(pend)){
+      const e=pend[tid];
+      const j=await (await fetch(API,{method:'POST',body:JSON.stringify(e)})).json();
+      if(j.ok){ const ahoraP=(await kvGet('estadoPend'))||{}; if(ahoraP[tid] && ahoraP[tid].ts===e.ts){ delete ahoraP[tid]; await kvSet('estadoPend',ahoraP); } }
+      else break;
+    }
+  }catch(e){}finally{ enviandoE=false; }
+}
 function marcaGuardado(){ const t=draft.horaInicio?'🟢 Turno en curso · ':''; guardado.textContent = t+'💾 Guardado en el celular'+(draft.guardadoA?' · '+draft.guardadoA:''); }
 
 /* ====== Dibujar pantalla ====== */
@@ -716,7 +756,7 @@ async function enviarTurno(){
 
 let enviando=false;
 async function sincronizar(){
-  enviarVueltas();
+  enviarVueltas(); enviarEstados();
   if(enviando) return; enviando=true;
   try{
     const cola = await colaTodos();
@@ -776,32 +816,61 @@ let vivoDatos=null;
 async function cargarVivo(manual){
   if(navigator.onLine){
     try{
-      const j = await (await fetch(API+'?accion=vivo')).json();
-      if(j.ok){ vivoDatos={filas:j.filas, recibido:Date.now()}; await kvSet('vivo', vivoDatos); mostrarVivo(); if(manual) aviso('En vivo actualizado ✔'); return; }
+      const [j,je] = await Promise.all([ fetch(API+'?accion=vivo').then(r=>r.json()), fetch(API+'?accion=estados').then(r=>r.json()).catch(()=>null) ]);
+      if(j.ok){ vivoDatos={filas:j.filas, estados:(je&&je.ok?je.estados:(vivoDatos&&vivoDatos.estados)||[]), recibido:Date.now()}; await kvSet('vivo', vivoDatos); mostrarVivo(); if(manual) aviso('En vivo actualizado ✔'); return; }
     }catch(e){}
   }
   vivoDatos = vivoDatos || (await kvGet('vivo')) || null;
   mostrarVivo(true); if(manual) aviso('Sin señal para actualizar');
 }
+let vivoCaex='';
+function elegirVivo(c){ vivoCaex=c; mostrarVivo(); }
 function mostrarVivo(sinSenal){
-  if(!vivoDatos){ vivoLista.innerHTML='<p class="dur">Cargando… (necesita señal la primera vez)</p>'; return; }
-  const filas=vivoDatos.filas||[], ahoraMs=Date.now();
-  const max=Math.max(1,...filas.map(f=>f.ton||0));
+  if(!vivoDatos){ vivoSel.innerHTML=''; vivoLista.innerHTML='<p class="dur">Cargando… (necesita señal la primera vez)</p>'; return; }
+  const filas=vivoDatos.filas||[], ests=vivoDatos.estados||[], ahoraMs=Date.now();
   vivoV.textContent=filas.reduce((s,f)=>s+(f.vueltas||0),0);
   vivoT.textContent=(Math.round(filas.reduce((s,f)=>s+(f.ton||0),0)*10)/10).toLocaleString('es-CL')+' t';
   const hace=Math.round((ahoraMs-vivoDatos.recibido)/60000);
   vivoInfo.textContent=(sinSenal?'📵 Sin señal · ':'')+'Actualizado '+(hace<1?'recién':'hace '+hace+' min')+' · se actualiza solo cada minuto';
-  vivoLista.innerHTML = filas.length ? filas.map(f=>{
-    const min=f.ultima?Math.round((ahoraMs-f.ultima)/60000):null;
-    const hora=f.ultima?new Date(f.ultima).toTimeString().slice(0,5):'--:--';
-    const pill=f.sin?'<span class="pill ce">Sin vueltas</span>':f.cerrado?'<span class="pill ce">Turno cerrado</span>':min>40?'<span class="pill sr">Sin reporte</span>':'<span class="pill op">Operando</span>';
-    const yo=draft&&String(draft.caex)===String(f.caex);
-    return `<div class="vivo ${yo?'yo':''} ${f.sin||f.cerrado?'apagado':''}">
-      <div class="vcab"><b>CAEX ${esc(f.caex)}</b>${pill}</div>
-      <div class="vop">${f.sin?'Aún no envía vueltas':esc(f.operadores)+' · '+esc(f.grupo||'')+' · '+esc(f.turno||'')}${f.revisar?' · ⚠️ '+f.revisar+' foto(s) a revisar':''}</div>
-      <div class="vnum"><div><b>${f.vueltas||0}</b><small>vueltas</small></div><div><b>${(f.ton||0).toLocaleString('es-CL')}</b><small>toneladas</small></div><div><b>${hora}</b><small>${min==null?'última vuelta':'hace '+min+' min'}</small></div></div>
-      <div class="vbar"><i style="width:${Math.round((f.ton||0)/max*100)}%"></i></div></div>`;
-  }).join('') : '<p class="dur">Aún no hay vueltas en este turno.</p>';
+  const fil=c=>filas.find(f=>String(f.caex)===String(c)), est=c=>ests.find(e=>String(e.caex)===String(c));
+  const lista=[...new Set([...(caexLista||[]),...filas.map(f=>String(f.caex)),...ests.map(e=>String(e.caex))])].filter(Boolean).sort();
+  const cerrado=(f,e)=>(e&&e.horaFin)||(f&&f.cerrado);
+  const color=(f,e)=>{ if(cerrado(f,e)) return '#6b7682'; if(e&&(e.detenciones||[]).some(d=>d.inicio&&!d.fin)) return '#e5484d';
+    if(f&&!f.sin&&f.ultima){ const m=(ahoraMs-f.ultima)/60000; return m>40?'#ffc20e':'#2fbf71'; } return e&&e.horaInicio?'#2fbf71':'#3a434e'; };
+  vivoSel.innerHTML=`<button class="todos ${vivoCaex===''?'sel':''}" onclick="elegirVivo('')">📋 Todos los CAEX</button>`+lista.map(c=>{ const f=fil(c),e=est(c);
+    return `<button class="${vivoCaex===c?'sel':''}" onclick="elegirVivo('${esc(c)}')"><span class="pt" style="background:${color(f,e)}"></span>${esc(c)}<small>${f&&!f.sin?(f.vueltas||0)+' v · '+(f.ton||0).toLocaleString('es-CL')+' t':(e&&e.horaInicio?'En turno':'Sin datos')}</small></button>`; }).join('');
+  const ver = vivoCaex ? [vivoCaex] : lista.filter(c=>fil(c)||est(c));
+  vivoLista.innerHTML = ver.length ? ver.map(c=>tarjetaVivo(c,fil(c),est(c),!!vivoCaex,ahoraMs)).join('') : '<p class="dur">Aún no hay datos en este turno.</p>';
+}
+function tarjetaVivo(c,f,e,detalle,ahoraMs){
+  f=f||{caex:c,sin:true};
+  const min=f.ultima?Math.round((ahoraMs-f.ultima)/60000):null;
+  const hora=f.ultima?new Date(f.ultima).toTimeString().slice(0,5):'--:--';
+  const detAb=e&&(e.detenciones||[]).find(d=>d.inicio&&!d.fin);
+  const pill=(e&&e.horaFin)||f.cerrado?'<span class="pill ce">Turno cerrado</span>':detAb?'<span class="pill sr" style="background:#3d1416;color:#ff9a9d">Detenido · '+esc(detAb.tipo||'')+'</span>':f.sin&&!(e&&e.horaInicio)?'<span class="pill ce">Sin datos</span>':f.sin?'<span class="pill op">En turno</span>':min>40?'<span class="pill sr">Sin reporte</span>':'<span class="pill op">Operando</span>';
+  const yo=draft&&String(draft.caex)===String(c);
+  const oper=(e&&e.operador)||f.operadores||'', grupo=(e&&e.grupo)||f.grupo||'', turno=(e&&e.turno)||f.turno||'';
+  let h=`<div class="vivo ${yo?'yo':''} ${((e&&e.horaFin)||f.cerrado)&&!detalle?'apagado':''}">
+      <div class="vcab"><b>CAEX ${esc(c)}</b>${pill}</div>
+      <div class="vop">${oper?esc(oper)+' · '+esc(grupo)+' · '+esc(turno):'Aún no envía datos'}${f.revisar?' · ⚠️ '+f.revisar+' foto(s) a revisar':''}</div>
+      <div class="vnum"><div><b>${f.vueltas||0}</b><small>vueltas</small></div><div><b>${(f.ton||0).toLocaleString('es-CL')}</b><small>toneladas</small></div><div><b>${hora}</b><small>${min==null?'última vuelta':'hace '+min+' min'}</small></div></div>`;
+  if(detalle) h+=registroVivo(e);
+  return h+'</div>';
+}
+function registroVivo(e){
+  if(!e||!e.horaInicio) return '<div class="vreg"><h4>🕒 Registro del turno</h4><p class="dur">El operador aún no marca la hora de inicio de turno.</p></div>';
+  const durM=(a,b)=>{ const m=minutos(a,b); return m>0?' ('+(m>=60?Math.floor(m/60)+' h '+p2(m%60)+' min':m+' min')+')':''; };
+  const lin=(t,v,sub,curso)=>`<div class="lin"><span>${t}${sub?'<i>'+sub+'</i>':''}</span><b class="${curso?'curso':''}">${v}</b></div>`;
+  let h='<div class="vreg"><h4>🕒 Registro del turno</h4>'+lin('🟢 Inicio de turno',esc(e.horaInicio));
+  if(e.colIni) h+=lin('🍽️ Colación', e.colFin?esc(e.colIni)+' a '+esc(e.colFin)+durM(e.colIni,e.colFin):esc(e.colIni)+' · en curso','',!e.colFin);
+  else h+=lin('🍽️ Colación','—');
+  (e.detenciones||[]).forEach((d,i)=>{
+    const ref=[d.tipo||'Sin tipo', d.litros!==''&&d.litros!=null?d.litros+' L':'', d.comentario||''].filter(Boolean).map(esc).join(' · ');
+    h+=lin('⛔ Detención '+(i+1), d.inicio?(d.fin?esc(d.inicio)+' a '+esc(d.fin)+durM(d.inicio,d.fin):esc(d.inicio)+' · en curso'):'—', ref, d.inicio&&!d.fin);
+  });
+  if(!(e.detenciones||[]).length) h+=lin('⛔ Detenciones','Sin detenciones');
+  h+=lin('🏁 Fin de turno', e.horaFin?esc(e.horaFin):'—');
+  return h+'</div>';
 }
 setInterval(()=>{ if(!vVivo.hidden) cargarVivo(); },60000);
 async function limpiarVivo(){
