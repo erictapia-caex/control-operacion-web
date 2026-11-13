@@ -163,6 +163,11 @@ input:disabled,select:disabled{opacity:.6}
 .vsel button.sel{background:var(--am);color:#111;border-color:var(--am)}.vsel button.sel small{color:#3a2f00}
 .vsel button.todos{grid-column:1/-1}
 .vsel button .pt{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.envop{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:11px;margin-bottom:8px;font-weight:700;font-size:15px;background:#12161b}
+.envop input{width:22px;height:22px;accent-color:#25a35a;margin:0}
+.envop small{margin-left:auto;color:var(--sub);font-weight:600;font-size:12px}
+.envgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
+.envgrid .envop{flex-wrap:wrap;gap:4px 8px}.envgrid .envop small{margin-left:30px;width:100%}
 .vreg{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
 .vreg h4{margin:0 0 6px;color:var(--am);font-size:14px}
 .vreg .lin{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed #2a313a;font-size:14px}
@@ -234,7 +239,10 @@ textarea{width:100%;font:inherit;font-size:16px;padding:12px;border-radius:10px;
   <div id="vVivo" hidden>
   <section>
     <h2>📡 En vivo · turno actual</h2>
-    <div class="histbar"><button onclick="cargarVivo(true)">🔄 Actualizar</button><button style="background:var(--err);color:#fff" onclick="limpiarVivo()">🗑 Eliminar en vivo</button></div>
+    <div class="histbar"><button onclick="cargarVivo(true)">🔄 Actualizar</button><button id="btnVivoDel" style="background:var(--err);color:#fff" onclick="limpiarVivo()">🗑 Eliminar en vivo</button></div>
+    <div class="chips" style="margin:0 0 8px"><button id="vmAhora" class="chip sel" onclick="modoVivo('')">📡 Ahora</button><button id="vmFecha" class="chip" onclick="modoVivo('fecha')">📅 Otra fecha</button></div>
+    <div id="vivoFechaBox" class="filtros" style="display:none;margin-bottom:10px"><input type="date" id="vivoFechaIn" onchange="cambioFechaVivo()" style="width:100%">
+      <div class="chips"><button id="vtDia" class="chip sel" onclick="turnoVivo('Día')">☀️ Día</button><button id="vtNoche" class="chip" onclick="turnoVivo('Noche')">🌙 Noche</button></div></div>
     <div class="totales" style="margin-bottom:10px">
       <div class="total"><span>Vueltas flota</span><b id="vivoV">0</b></div>
       <div class="total"><span>Toneladas flota</span><b id="vivoT">0</b></div>
@@ -243,6 +251,8 @@ textarea{width:100%;font:inherit;font-size:16px;padding:12px;border-radius:10px;
     <label>Elige un CAEX para ver su turno en vivo</label>
     <div id="vivoSel" class="vsel"></div>
     <div id="vivoLista"></div>
+    <button id="btnVivoWsp" onclick="enviarVivo()" style="width:100%;margin-top:4px;background:#25a35a;color:#fff;border:0;border-radius:12px;padding:14px;font-size:16px;font-weight:800">📲 Enviar por WhatsApp</button>
+    <div id="vivoEnvBox" hidden style="margin-top:4px;border:2px solid #25a35a;border-radius:12px;padding:12px;background:#181d23"></div>
   </section>
   </div>
   <div id="vForm">
@@ -813,10 +823,34 @@ function verVista(v){
 
 /* ====== En vivo: lo que lleva cada CAEX en el turno ====== */
 let vivoDatos=null;
+let vivoFecha='', vivoTurno='Día';
+function modoVivo(m){
+  if(m==='fecha'){ vivoFecha=vivoFechaIn.value||hoy(); vivoFechaIn.value=vivoFecha; } else vivoFecha='';
+  vivoCaex=''; vivoDatos=null; pintarModoVivo(); mostrarVivo(); cargarVivo();
+}
+function cambioFechaVivo(){ if(!vivoFechaIn.value) return; vivoFecha=vivoFechaIn.value; vivoCaex=''; vivoDatos=null; mostrarVivo(); cargarVivo(); }
+function turnoVivo(t){ vivoTurno=t; vivoCaex=''; pintarModoVivo(); mostrarVivo(); }
+function pintarModoVivo(){
+  vmAhora.classList.toggle('sel',!vivoFecha); vmFecha.classList.toggle('sel',!!vivoFecha); vivoFechaBox.style.display=vivoFecha?'block':'none';
+  vtDia.classList.toggle('sel',vivoTurno==='Día'); vtNoche.classList.toggle('sel',vivoTurno==='Noche');
+  btnVivoDel.textContent = vivoFecha ? '🗑 Eliminar este día' : '🗑 Eliminar en vivo';
+}
+const sinTilde=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 async function cargarVivo(manual){
+  if(vivoFecha){
+    if(!navigator.onLine){ vivoLista.innerHTML='<p class="dur">📵 Necesitas señal para ver otra fecha.</p>'; return; }
+    try{
+      const f=vivoFecha, j=await (await fetch(API+'?accion=vivoFecha&fecha='+f)).json();
+      if(f!==vivoFecha) return;
+      if(!j.ok){ vivoSel.innerHTML=''; vivoLista.innerHTML='<p class="dur">No se pudo leer esa fecha: '+esc(j.error||'')+'</p>'; return; }
+      vivoDatos={filas:j.filas, estados:j.estados, recibido:Date.now(), fecha:f}; mostrarVivo(); if(manual) aviso('Actualizado ✔');
+    }catch(e){ vivoLista.innerHTML='<p class="dur">No se pudo conectar. Revisa que el Apps Script esté actualizado.</p>'; }
+    return;
+  }
   if(navigator.onLine){
     try{
       const [j,je] = await Promise.all([ fetch(API+'?accion=vivo').then(r=>r.json()), fetch(API+'?accion=estados').then(r=>r.json()).catch(()=>null) ]);
+      if(vivoFecha) return;
       if(j.ok){ vivoDatos={filas:j.filas, estados:(je&&je.ok?je.estados:(vivoDatos&&vivoDatos.estados)||[]), recibido:Date.now()}; await kvSet('vivo', vivoDatos); mostrarVivo(); if(manual) aviso('En vivo actualizado ✔'); return; }
     }catch(e){}
   }
@@ -825,32 +859,121 @@ async function cargarVivo(manual){
 }
 let vivoCaex='';
 function elegirVivo(c){ vivoCaex=c; mostrarVivo(); }
+/* ====== Enviar En vivo por WhatsApp (imagen) ====== */
+function imagenVivo(cc){
+  const W=1080, P=50, cv=document.createElement('canvas'), g=cv.getContext('2d');
+  const F='system-ui,-apple-system,Segoe UI,Roboto,sans-serif', AM='#ffc20e', TX='#eef1f4', SB='#9aa5b1', LN='#2e3641';
+  const hist=!!vivoDatos.fecha, mismoT=x=>!hist||sinTilde(x.turno)===sinTilde(vivoTurno);
+  const filas=(vivoDatos.filas||[]).filter(mismoT), ests=(vivoDatos.estados||[]).filter(mismoT), ahoraMs=Date.now();
+  const fil=c=>filas.find(f=>String(f.caex)===String(c)), est=c=>ests.find(e=>String(e.caex)===String(c));
+  const ops=[]; let y=0;
+  const txt=(t,f,col,x,al)=>{ const yy=y; ops.push(()=>{ g.font=f; g.fillStyle=col; g.textAlign=al||'left'; g.fillText(t,x,yy); g.textAlign='left'; }); };
+  const linea=()=>{ const yy=y; ops.push(()=>{ g.strokeStyle=LN; g.lineWidth=2; g.beginPath(); g.moveTo(P,yy); g.lineTo(W-P,yy); g.stroke(); }); };
+  const fila=(a,b,sub,col)=>{ y+=52; txt(a,'34px '+F,TX,P); txt(b,'700 34px '+F,col||TX,W-P,'right'); if(sub){ y+=40; txt(sub,'28px '+F,SB,P+50); } y+=18; linea(); };
+  const ton=n=>(Math.round((n||0)*10)/10).toLocaleString('es-CL');
+  const d=new Date(), fecha=hist?fF(vivoDatos.fecha)+' · Turno '+vivoTurno:p2(d.getDate())+'-'+p2(d.getMonth()+1)+'-'+d.getFullYear()+' · '+ahora();
+  y+=80; txt((hist?'REGISTRO':'EN VIVO')+' · '+(cc?'CAEX '+cc:'TODOS LOS CAEX'),'800 50px '+F,AM,P);
+  y+=46; txt(fecha,'30px '+F,SB,P); y+=20;
+  const vF=filas.reduce((s,f)=>s+(f.vueltas||0),0), tF=filas.reduce((s,f)=>s+(f.ton||0),0);
+  if(cc){
+    const c=cc, f=fil(c)||{}, e=est(c);
+    const oper=(e&&e.operador)||f.operadores||'', grupo=(e&&e.grupo)||f.grupo||'', turno=(e&&e.turno)||f.turno||'';
+    y+=50; txt(oper?oper+' · '+grupo+' · '+turno:'Aún no envía datos','34px '+F,TX,P);
+    y+=90; txt(String(f.vueltas||0),'800 70px '+F,AM,P); txt(ton(f.ton)+' t','800 70px '+F,AM,W-P,'right');
+    y+=40; txt('vueltas','28px '+F,SB,P); txt('toneladas','28px '+F,SB,W-P,'right');
+    y+=30; if(f.horaUlt||f.ultima){ y+=40; txt('Última vuelta: '+(f.horaUlt||new Date(f.ultima).toTimeString().slice(0,5)),'30px '+F,SB,P); }
+    y+=70; txt('REGISTRO DEL TURNO','800 36px '+F,AM,P); y+=10; linea();
+    if(!e||!e.horaInicio) fila('Inicio de turno','Aún no marca');
+    else{
+      const dur=(a,b)=>{ const m=minutos(a,b); return m>0?' ('+(m>=60?Math.floor(m/60)+' h '+p2(m%60)+' min':m+' min')+')':''; };
+      fila('Inicio de turno',e.horaInicio);
+      fila('Colación', e.colIni?(e.colFin?e.colIni+' a '+e.colFin+dur(e.colIni,e.colFin):e.colIni+' · en curso'):'—','',e.colIni&&!e.colFin?'#ffe08a':'');
+      const ds=e.detenciones||[]; if(!ds.length) fila('Detenciones','Sin detenciones');
+      ds.forEach((z,i)=>fila('Detención '+(i+1), z.inicio?(z.fin?z.inicio+' a '+z.fin+dur(z.inicio,z.fin):z.inicio+' · en curso'):'—',
+        [z.tipo||'Sin tipo', z.litros!==''&&z.litros!=null?z.litros+' L':'', z.comentario||''].filter(Boolean).join(' · '), z.inicio&&!z.fin?'#ffe08a':''));
+      fila('Fin de turno',e.horaFin||'—');
+    }
+    y+=60; txt('Flota: '+vF+' vueltas · '+ton(tF)+' t','700 32px '+F,SB,P);
+  } else {
+    y+=90; txt(String(vF),'800 70px '+F,AM,P); txt(ton(tF)+' t','800 70px '+F,AM,W-P,'right');
+    y+=40; txt('vueltas flota','28px '+F,SB,P); txt('toneladas flota','28px '+F,SB,W-P,'right'); y+=20; linea();
+    const lista=[...new Set([...(caexLista||[]),...filas.map(f=>String(f.caex)),...ests.map(e=>String(e.caex))])].filter(c=>fil(c)||est(c)).sort();
+    if(!lista.length) fila('Aún no hay datos en este turno','');
+    lista.forEach(c=>{ const f=fil(c)||{}, e=est(c);
+      const det=e&&(e.detenciones||[]).find(z=>z.inicio&&!z.fin);
+      const estado=hist?((e&&e.horaFin)?'Turno cerrado':'Registro'):(e&&e.horaFin)||f.cerrado?'Turno cerrado':det?'Detenido · '+(det.tipo||''):f.ultima&&(ahoraMs-f.ultima)/60000>40?'Sin reporte':'Operando';
+      fila('CAEX '+c, (f.vueltas||0)+' v · '+ton(f.ton)+' t', ((e&&e.operador)||f.operadores||'')+' · '+estado, det?'#ff9a9d':''); });
+  }
+  y+=60; txt('Registro Operadores CAEX · Eric Tapia Valenzuela','26px '+F,SB,P); y+=10;
+  cv.width=W; cv.height=y+P; g.fillStyle='#1f252d'; g.fillRect(0,0,W,cv.height); g.strokeStyle=AM; g.lineWidth=4; g.strokeRect(10,10,W-20,cv.height-20);
+  ops.forEach(f=>f());
+  return cv.toDataURL('image/png');
+}
+/* Selección de qué enviar: resumen general de flota y/o uno, varios o todos los CAEX */
+function listaVivoEnv(){
+  const hist=!!vivoDatos.fecha, mismoT=x=>!hist||sinTilde(x.turno)===sinTilde(vivoTurno);
+  const filas=(vivoDatos.filas||[]).filter(mismoT), ests=(vivoDatos.estados||[]).filter(mismoT);
+  return [...new Set([...(caexLista||[]),...filas.map(f=>String(f.caex)),...ests.map(e=>String(e.caex))])].filter(Boolean).sort()
+    .map(c=>{ const f=filas.find(x=>String(x.caex)===c); return {c, txt: f&&!f.sin?(f.vueltas||0)+' v · '+(f.ton||0).toLocaleString('es-CL')+' t':(ests.some(x=>String(x.caex)===c)?'con horas':'sin datos')}; });
+}
+function enviarVivo(){
+  if(!vivoDatos) return aviso('Primero toca 🔄 Actualizar con señal');
+  const l=listaVivoEnv();
+  vivoEnvBox.innerHTML=`<div style="font-weight:800;color:var(--am);margin-bottom:8px">¿Qué quieres enviar por WhatsApp?</div>
+    <label class="envop" style="border-color:var(--am)"><input type="checkbox" id="envGen" checked> 📊 Resumen general de flota <small>(vueltas y toneladas de todos)</small></label>
+    <label class="envop"><input type="checkbox" id="envTodos" onchange="document.querySelectorAll('.envC').forEach(x=>x.checked=this.checked)"> 🚚 Marcar todos los CAEX</label>
+    <div class="envgrid">${l.map(x=>`<label class="envop"><input type="checkbox" class="envC" value="${esc(x.c)}" ${x.c===vivoCaex?'checked':''}> CAEX ${esc(x.c)}<small>${x.txt}</small></label>`).join('')}</div>
+    <div class="histbar" style="margin-top:10px"><button onclick="vivoEnvBox.hidden=true;btnVivoWsp.hidden=false">✕ Cancelar</button><button style="background:#25a35a;color:#fff;font-weight:800" onclick="enviarVivoSel()">📲 Enviar</button></div>`;
+  if(vivoCaex) envGen.checked=false;
+  vivoEnvBox.hidden=false; btnVivoWsp.hidden=true; vivoEnvBox.scrollIntoView({behavior:'smooth',block:'center'});
+}
+async function enviarVivoSel(){
+  const cs=[...document.querySelectorAll('.envC:checked')].map(x=>x.value), gen=envGen.checked;
+  if(!gen && !cs.length) return aviso('Marca el resumen general o al menos un CAEX');
+  aviso('Preparando '+(cs.length+(gen?1:0))+' imagen(es)…');
+  const d=new Date(), hh=p2(d.getHours())+'-'+p2(d.getMinutes()), cuando=vivoFecha?vivoFecha+'_'+vivoTurno:hoy()+'_'+hh;
+  const imgs=[]; if(gen) imgs.push({nombre:'EnVivo_Flota_'+cuando+'.png', datos:imagenVivo('')});
+  cs.forEach(c=>imgs.push({nombre:'EnVivo_CAEX'+c+'_'+cuando+'.png', datos:imagenVivo(c)}));
+  const asunto=(vivoFecha?'Registro '+fF(vivoFecha)+' '+vivoTurno:'En vivo '+ahora())+(gen?' · Flota':'')+(cs.length?' · CAEX '+cs.join(', '):'');
+  const n=window.flutter_inappwebview;
+  try{
+    if(n && n.callHandler){ await n.callHandler('compartir', JSON.stringify({por:'wsp', asunto, imgs})); }
+    else {
+      const files=await Promise.all(imgs.map(async i=>new File([await (await fetch(i.datos)).blob()], i.nombre, {type:'image/png'})));
+      if(navigator.canShare && navigator.canShare({files})) await navigator.share({files, title:asunto, text:asunto});
+      else { imgs.forEach(i=>{ const a=document.createElement('a'); a.href=i.datos; a.download=i.nombre; a.click(); }); alert('Este navegador no permite compartir directo. Las imágenes se descargaron; adjúntalas en WhatsApp.'); }
+    }
+    vivoEnvBox.hidden=true; btnVivoWsp.hidden=false;
+  }catch(e){ if(e && e.name!=='AbortError') alert('No se pudo enviar: '+e); }
+}
+
 function mostrarVivo(sinSenal){
   if(!vivoDatos){ vivoSel.innerHTML=''; vivoLista.innerHTML='<p class="dur">Cargando… (necesita señal la primera vez)</p>'; return; }
-  const filas=vivoDatos.filas||[], ests=vivoDatos.estados||[], ahoraMs=Date.now();
+  const hist=!!vivoDatos.fecha, mismoT=x=>!hist||sinTilde(x.turno)===sinTilde(vivoTurno);
+  const filas=(vivoDatos.filas||[]).filter(mismoT), ests=(vivoDatos.estados||[]).filter(mismoT), ahoraMs=Date.now();
   vivoV.textContent=filas.reduce((s,f)=>s+(f.vueltas||0),0);
   vivoT.textContent=(Math.round(filas.reduce((s,f)=>s+(f.ton||0),0)*10)/10).toLocaleString('es-CL')+' t';
   const hace=Math.round((ahoraMs-vivoDatos.recibido)/60000);
-  vivoInfo.textContent=(sinSenal?'📵 Sin señal · ':'')+'Actualizado '+(hace<1?'recién':'hace '+hace+' min')+' · se actualiza solo cada minuto';
+  vivoInfo.textContent= hist ? '📅 Registro del '+fF(vivoDatos.fecha)+' · Turno '+vivoTurno : (sinSenal?'📵 Sin señal · ':'')+'Actualizado '+(hace<1?'recién':'hace '+hace+' min')+' · se actualiza solo cada minuto';
   const fil=c=>filas.find(f=>String(f.caex)===String(c)), est=c=>ests.find(e=>String(e.caex)===String(c));
   const lista=[...new Set([...(caexLista||[]),...filas.map(f=>String(f.caex)),...ests.map(e=>String(e.caex))])].filter(Boolean).sort();
   const cerrado=(f,e)=>(e&&e.horaFin)||(f&&f.cerrado);
-  const color=(f,e)=>{ if(cerrado(f,e)) return '#6b7682'; if(e&&(e.detenciones||[]).some(d=>d.inicio&&!d.fin)) return '#e5484d';
+  const color=(f,e)=>{ if(hist) return f&&!f.sin?'#ffc20e':'#3a434e'; if(cerrado(f,e)) return '#6b7682'; if(e&&(e.detenciones||[]).some(d=>d.inicio&&!d.fin)) return '#e5484d';
     if(f&&!f.sin&&f.ultima){ const m=(ahoraMs-f.ultima)/60000; return m>40?'#ffc20e':'#2fbf71'; } return e&&e.horaInicio?'#2fbf71':'#3a434e'; };
   vivoSel.innerHTML=`<button class="todos ${vivoCaex===''?'sel':''}" onclick="elegirVivo('')">📋 Todos los CAEX</button>`+lista.map(c=>{ const f=fil(c),e=est(c);
     return `<button class="${vivoCaex===c?'sel':''}" onclick="elegirVivo('${esc(c)}')"><span class="pt" style="background:${color(f,e)}"></span>${esc(c)}<small>${f&&!f.sin?(f.vueltas||0)+' v · '+(f.ton||0).toLocaleString('es-CL')+' t':(e&&e.horaInicio?'En turno':'Sin datos')}</small></button>`; }).join('');
   const ver = vivoCaex ? [vivoCaex] : lista.filter(c=>fil(c)||est(c));
-  vivoLista.innerHTML = ver.length ? ver.map(c=>tarjetaVivo(c,fil(c),est(c),!!vivoCaex,ahoraMs)).join('') : '<p class="dur">Aún no hay datos en este turno.</p>';
+  vivoLista.innerHTML = ver.length ? ver.map(c=>tarjetaVivo(c,fil(c),est(c),!!vivoCaex,ahoraMs,hist)).join('') : '<p class="dur">'+(hist?'No hay datos de esa fecha y turno.':'Aún no hay datos en este turno.')+'</p>';
 }
-function tarjetaVivo(c,f,e,detalle,ahoraMs){
+function tarjetaVivo(c,f,e,detalle,ahoraMs,hist){
   f=f||{caex:c,sin:true};
-  const min=f.ultima?Math.round((ahoraMs-f.ultima)/60000):null;
-  const hora=f.ultima?new Date(f.ultima).toTimeString().slice(0,5):'--:--';
+  const min=f.ultima&&!hist?Math.round((ahoraMs-f.ultima)/60000):null;
+  const hora=f.horaUlt||(f.ultima?new Date(f.ultima).toTimeString().slice(0,5):'--:--');
   const detAb=e&&(e.detenciones||[]).find(d=>d.inicio&&!d.fin);
-  const pill=(e&&e.horaFin)||f.cerrado?'<span class="pill ce">Turno cerrado</span>':detAb?'<span class="pill sr" style="background:#3d1416;color:#ff9a9d">Detenido · '+esc(detAb.tipo||'')+'</span>':f.sin&&!(e&&e.horaInicio)?'<span class="pill ce">Sin datos</span>':f.sin?'<span class="pill op">En turno</span>':min>40?'<span class="pill sr">Sin reporte</span>':'<span class="pill op">Operando</span>';
+  const pill=hist?((e&&e.horaFin)?'<span class="pill ce">Turno cerrado</span>':'<span class="pill ce">Registro</span>'):(e&&e.horaFin)||f.cerrado?'<span class="pill ce">Turno cerrado</span>':detAb?'<span class="pill sr" style="background:#3d1416;color:#ff9a9d">Detenido · '+esc(detAb.tipo||'')+'</span>':f.sin&&!(e&&e.horaInicio)?'<span class="pill ce">Sin datos</span>':f.sin?'<span class="pill op">En turno</span>':min>40?'<span class="pill sr">Sin reporte</span>':'<span class="pill op">Operando</span>';
   const yo=draft&&String(draft.caex)===String(c);
   const oper=(e&&e.operador)||f.operadores||'', grupo=(e&&e.grupo)||f.grupo||'', turno=(e&&e.turno)||f.turno||'';
-  let h=`<div class="vivo ${yo?'yo':''} ${((e&&e.horaFin)||f.cerrado)&&!detalle?'apagado':''}">
+  let h=`<div class="vivo ${yo?'yo':''} ${((e&&e.horaFin)||f.cerrado)&&!detalle&&!hist?'apagado':''}">
       <div class="vcab"><b>CAEX ${esc(c)}</b>${pill}</div>
       <div class="vop">${oper?esc(oper)+' · '+esc(grupo)+' · '+esc(turno):'Aún no envía datos'}${f.revisar?' · ⚠️ '+f.revisar+' foto(s) a revisar':''}</div>
       <div class="vnum"><div><b>${f.vueltas||0}</b><small>vueltas</small></div><div><b>${(f.ton||0).toLocaleString('es-CL')}</b><small>toneladas</small></div><div><b>${hora}</b><small>${min==null?'última vuelta':'hace '+min+' min'}</small></div></div>`;
@@ -872,9 +995,19 @@ function registroVivo(e){
   h+=lin('🏁 Fin de turno', e.horaFin?esc(e.horaFin):'—');
   return h+'</div>';
 }
-setInterval(()=>{ if(!vVivo.hidden) cargarVivo(); },60000);
+setInterval(()=>{ if(!vVivo.hidden && !vivoFecha) cargarVivo(); },60000);
 async function limpiarVivo(){
   const k=CLAVE_BORRAR;
+  if(vivoFecha){
+    if(!confirm('¿Eliminar el En vivo del '+fF(vivoFecha)+'?\n\nSe borran las vueltas en vivo y las horas de ese día (turno Día y Noche). No se puede deshacer.\n\nLos turnos cerrados y el Historial no se borran.')) return;
+    if(!navigator.onLine) return alert('Necesitas señal para eliminar.');
+    try{
+      const j=await (await fetch(API,{method:'POST',body:JSON.stringify({accion:'limpiarVivoFecha',fecha:vivoFecha,clave:k})})).json();
+      if(!j.ok) return alert('No se pudo eliminar: '+(j.error||''));
+      aviso((j.borradas||0)+' registro(s) borrado(s) ✔'); cargarVivo();
+    }catch(e){ alert('No se pudo conectar. Intenta de nuevo con señal.'); }
+    return;
+  }
   if(!confirm('¿Eliminar TODAS las vueltas del En vivo de la hoja? No se puede deshacer.\n\nLos turnos cerrados y el Historial no se borran.')) return;
   if(!navigator.onLine) return alert('Necesitas señal para eliminar.');
   try{
