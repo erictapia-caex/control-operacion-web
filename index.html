@@ -177,6 +177,10 @@ input:disabled,select:disabled{opacity:.6}
 .vreg .curso{color:#ffe08a}
 .pill{font-size:12px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap}
 .pill.op{background:#123d27;color:#6ee7a6}.pill.sr{background:#3a2f0a;color:#ffe08a}.pill.ce{background:#2b333d;color:var(--sub)}
+.ckok{margin:10px 0 4px;padding:10px 12px;border-radius:10px;background:#123322;border:1px solid #2fbf71;color:#7ee2a8;font-weight:800;font-size:16px}
+.ckno{margin:10px 0 4px;padding:10px 12px;border-radius:10px;background:#3d1416;border:1px solid #e5484d;color:#ff9a9d;font-weight:800;font-size:16px}
+.ckimg{display:block;width:100%;max-height:420px;object-fit:contain;border-radius:10px;margin-top:6px;background:#000}
+.ckcarga{color:var(--sub);font-size:13px;margin-top:4px}
 .vgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:2px 10px;font-size:14px}
 .vgrid div{border-bottom:1px solid var(--line);padding:4px 2px;white-space:nowrap}
 .tabs button.sel{background:var(--am);color:#111;border-color:var(--am)}
@@ -222,6 +226,9 @@ textarea{width:100%;font:inherit;font-size:16px;padding:12px;border-radius:10px;
   .ficha td{border-color:#ccc}.ficha td:first-child,.ficha p{color:#333}
   .ficha a{color:#000}
   .vgrid{font-size:12.5px!important;gap:0 8px}
+  .ckok,.ckno{background:#fff!important;color:#000!important;border:2px solid #000!important;font-size:15px}
+  .ckimg{max-height:75mm!important;width:auto!important;max-width:100%;margin:4px auto 0;background:#fff!important;border:1px solid #888}
+  .ckcarga{display:none}
   .vgrid div{border-color:#ccc;color:#000;padding:3px 2px}
 }
 </style>
@@ -1049,6 +1056,7 @@ function fichaHTML(x, imp){
   let h=`<div class="ficha"><h3>CAEX ${esc(x.caex)} · ${fF(x.fecha)} · ${x.grupo?esc(x.grupo)+' · ':''}Turno ${esc(x.turno||'')}</h3><table>
     ${fila('Operador',x.operador)}${fila('Grupo',x.grupo)}${fila('Horómetro inicial',x.horIni)}${fila('Horómetro final',x.horFin)}${fila('Horas horómetro',x.horas)}
     ${fila('Hora inicio turno',x.horaInicio)}${fila('Colación',(x.colIni||'—')+' a '+(x.colFin||'—'))}${fila('Hora fin turno',x.horaFin)}</table>`;
+  h+=checkHTML(x,imp);
   if(!x.pesometros) return h+'<p>Para ver vueltas y detenciones, toca 🔄 Actualizar con señal.</p></div>';
   h+=`<h4>Vueltas y pesómetro (${x.vueltas||0})</h4>`;
   if(imp){
@@ -1064,13 +1072,29 @@ function fichaHTML(x, imp){
   h+= d.length ? '<table>'+d.map((z,i)=>`<tr><td>${i+1}. ${esc(z.tipo)}</td><td><b>${esc(z.inicio)} a ${esc(z.fin)}</b> (${esc(z.dur)})${vac(z.litros)?'':' · '+esc(z.litros)+' L'}${vac(z.comentario)?'':'<br><i>'+esc(z.comentario)+'</i>'}</td></tr>`).join('')+'</table>' : '<p>Sin detenciones.</p>';
   return h+'</div>';
 }
+/* ====== Foto del checklist: se trae de la hoja cuando se necesita ====== */
+const chkData={};
+function chkSrc(x){ if(!x||!x.checklist) return ''; if(String(x.checklist).startsWith('data:')) return x.checklist; return chkData[x.id]||''; }
+async function cargarCheck(x){
+  if(!x||!x.checklist) return ''; if(String(x.checklist).startsWith('data:')) return x.checklist;
+  if(chkData[x.id]!==undefined) return chkData[x.id];
+  try{ const j=await (await fetch(API+'?accion=fotoCheck&id='+encodeURIComponent(x.id))).json(); chkData[x.id]=j.ok&&j.foto?j.foto:''; }catch(e){ return ''; }
+  return chkData[x.id];
+}
+function checkHTML(x,imp){
+  if(!x.checklist) return '<div class="ckno">❌ Checklist sin foto</div>';
+  const src=chkSrc(x);
+  return '<div class="ckok">✅ Checklist realizado</div>'+(src?`<img class="ckimg" src="${src}" alt="Foto del checklist">`:(imp?'':'<div class="ckcarga">⏳ Cargando foto del checklist…</div>'));
+}
 let turnoVisto=null;
-function verTurno(id){ turnoVisto=histDatos.find(x=>String(x.id)===String(id)); if(!turnoVisto) return; detCont.innerHTML=fichaHTML(turnoVisto); modalDet.style.display='flex'; }
+async function verTurno(id){ turnoVisto=histDatos.find(x=>String(x.id)===String(id)); if(!turnoVisto) return; const t=turnoVisto; detCont.innerHTML=fichaHTML(t); modalDet.style.display='flex';
+  if(t.checklist && !chkSrc(t)){ await cargarCheck(t); if(turnoVisto===t && modalDet.style.display==='flex') detCont.innerHTML=fichaHTML(t); } }
 function cerrarDet(){ modalDet.style.display='none'; }
-function imprimir(lista){
+async function imprimir(lista){
   lista=lista.filter(Boolean); if(!lista.length) return;
-  const fechas=[...new Set(lista.map(x=>fF(x.fecha)))].join(', ');
+  if(lista.some(x=>x.checklist&&!chkSrc(x))){ aviso('Cargando fotos del checklist…'); await Promise.all(lista.map(cargarCheck)); }
   impresion.innerHTML=lista.map(x=>`<div class="pag"><div class="titimp">Registro Operadores CAEX · Eric Tapia Valenzuela</div>${fichaHTML(x,true)}${firmasHTML(x)}</div>`).join('');
+  await Promise.all([...impresion.querySelectorAll('img')].map(i=>i.complete?0:new Promise(r=>{ i.onload=i.onerror=r; setTimeout(r,4000); })));
   setTimeout(()=>window.print(),100);
 }
 function firmasHTML(x){
@@ -1087,12 +1111,12 @@ function exportarPDF(lista){
   document.title = lista.length===1 ? ('Turno_CAEX'+x.caex+'_'+fF(x.fecha)+'_'+(x.turno||'')) : ('Turnos_'+lista.length+'_'+hoy());
   alert('Se abrirá la ventana de impresión.\n\nEn "Destino" o "Impresora" elige:\n👉 Guardar como PDF\n\nLuego toca Guardar.');
   imprimir(lista);
-  setTimeout(()=>document.title=t0,3000);
+  setTimeout(()=>document.title=t0,10000);
 }
 function pdfSeleccion(){ exportarPDF(selLista()); }
 
 /* ====== Enviar turnos como imagen (WhatsApp o correo) ====== */
-function imagenTurno(x){
+function imagenTurno(x, ckImg){
   const W=1080, P=50, cv=document.createElement('canvas'), g=cv.getContext('2d');
   const F='system-ui,-apple-system,Segoe UI,Roboto,sans-serif', AM='#ffc20e', TX='#eef1f4', SB='#9aa5b1', LN='#2e3641';
   const ops=[]; let y=0;
@@ -1105,6 +1129,7 @@ function imagenTurno(x){
   titulo('CAEX '+x.caex+' · '+fF(x.fecha)+' · '+(x.grupo?x.grupo+' · ':'')+'Turno '+(x.turno||''),46);
   fila('Operador',x.operador); fila('Grupo',x.grupo); fila('Horómetro inicial',x.horIni); fila('Horómetro final',x.horFin); fila('Horas horómetro',x.horas);
   fila('Hora inicio turno',x.horaInicio); fila('Colación',(x.colIni||'—')+' a '+(x.colFin||'—')); fila('Hora fin turno',x.horaFin);
+  { y+=20; const ok=!!x.checklist, yc=y; ops.push(()=>{ g.fillStyle=ok?'#123322':'#3d1416'; g.fillRect(P,yc,W-2*P,76); g.strokeStyle=ok?'#2fbf71':'#e5484d'; g.lineWidth=3; g.strokeRect(P,yc,W-2*P,76); g.font='800 38px '+F; g.fillStyle=ok?'#7ee2a8':'#ff9a9d'; g.fillText(ok?'✅ CHECKLIST REALIZADO':'❌ CHECKLIST SIN FOTO',P+22,yc+52); }); y+=96; }
   y+=24; titulo('VUELTAS Y PESÓMETRO ('+(x.vueltas||0)+')',38);
   const ps=x.pesometros||[]; if(!ps.length) fila('Sin vueltas registradas','');
   ps.forEach(p=>fila('Vuelta '+p.n,(vac(p.ton)?'pendiente':p.ton+' t')+(p.revisar?' ⚠️ revisar':'')));
@@ -1112,6 +1137,8 @@ function imagenTurno(x){
   const d=x.detenciones||[]; titulo('DETENCIONES ('+d.length+')'+(d.length&&x.horasDet?' · '+x.horasDet:''),38);
   if(!d.length) fila('Sin detenciones','');
   d.forEach((z,i)=>fila((i+1)+'. '+z.tipo,z.inicio+' a '+z.fin+' ('+z.dur+')'+(vac(z.litros)?'':' · '+z.litros+' L')+(vac(z.comentario)?'':' · '+z.comentario)));
+  if(ckImg && ckImg.naturalWidth){ y+=30; titulo('FOTO DEL CHECKLIST',38); const mw=W-2*P, k=Math.min(mw/ckImg.naturalWidth, 1100/ckImg.naturalHeight), iw=ckImg.naturalWidth*k, ih=ckImg.naturalHeight*k, yi=y+10;
+    ops.push(()=>{ g.drawImage(ckImg,P+(mw-iw)/2,yi,iw,ih); }); y+=ih+20; }
   y+=50; const yp=y; ops.push(()=>{ g.font='26px '+F; g.fillStyle=SB; g.fillText('Registro Operadores CAEX · Eric Tapia Valenzuela',P,yp); }); y+=40;
   cv.width=W; cv.height=y+P; g.fillStyle='#1f252d'; g.fillRect(0,0,W,cv.height); g.strokeStyle=AM; g.lineWidth=4; g.strokeRect(10,10,W-20,cv.height-20);
   g.translate(0,P); ops.forEach(f=>f());
@@ -1121,7 +1148,8 @@ async function enviarSel(por){
   const lista=selLista().filter(Boolean); if(!lista.length) return aviso('Marca al menos un turno');
   if(lista.some(x=>!x.pesometros)) return alert('Toca 🔄 Actualizar con señal antes de enviar.');
   aviso('Preparando '+lista.length+' imagen(es)…');
-  const imgs=lista.map(x=>({nombre:'Turno_CAEX'+x.caex+'_'+fF(x.fecha)+'_'+(x.turno||'')+'.png', datos:imagenTurno(x)}));
+  const cks=await Promise.all(lista.map(async x=>{ const src=await cargarCheck(x); if(!src) return null; const im=new Image(); await new Promise(r=>{ im.onload=im.onerror=r; im.src=src; }); return im; }));
+  const imgs=lista.map((x,i)=>({nombre:'Turno_CAEX'+x.caex+'_'+fF(x.fecha)+'_'+(x.turno||'')+'.png', datos:imagenTurno(x,cks[i])}));
   const asunto='Turnos CAEX · '+[...new Set(lista.map(x=>fF(x.fecha)))].join(', ');
   const n=window.flutter_inappwebview;
   try{
