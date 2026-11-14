@@ -168,6 +168,8 @@ input:disabled,select:disabled{opacity:.6}
 .envop small{margin-left:auto;color:var(--sub);font-weight:600;font-size:12px}
 .envgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
 .envgrid .envop{flex-wrap:wrap;gap:4px 8px}.envgrid .envop small{margin-left:30px;width:100%}
+.ckb{display:inline-block;font-size:12px;font-weight:800;padding:3px 9px;border-radius:20px}
+.ckb.ok{background:#123322;color:#7ee2a8;border:1px solid #2fbf71}.ckb.no{background:#3a3110;color:#ffc20e;border:1px solid #6b5714}
 .vreg{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
 .vreg h4{margin:0 0 6px;color:var(--am);font-size:14px}
 .vreg .lin{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed #2a313a;font-size:14px}
@@ -401,10 +403,10 @@ function guardar(){ kvSet('draft', draft); draft.guardadoA=ahora(); marcaGuardad
 let tEstado;
 function programarEstado(){ clearTimeout(tEstado); tEstado=setTimeout(prepararEstado,2500); }
 async function prepararEstado(){
-  if(!draft || !draft.caex || !draft.horaInicio) return;
+  if(!draft || !draft.caex || !(draft.horaInicio || draft.checklist)) return;
   if(!draft.tid){ draft.tid=Date.now()+'-'+Math.random().toString(36).slice(2,7); kvSet('draft',draft); }
   const e={accion:'estado', tid:draft.tid, ts:Date.now(), caex:draft.caex, operador:(draft.operador||'').trim(), fecha:draft.fecha, grupo:draft.grupo, turno:draft.turno,
-    horaInicio:draft.horaInicio, colIni:draft.colIni, colFin:draft.colFin, horaFin:draft.horaFin,
+    checklist:!!draft.checklist, horaInicio:draft.horaInicio, colIni:draft.colIni, colFin:draft.colFin, horaFin:draft.horaFin,
     detenciones:draft.detenciones.filter(d=>d.tipo||d.inicio).map(d=>({tipo:d.tipo||'',inicio:d.inicio||'',fin:d.fin||'',litros:d.tipo==='Combustible'?(d.litros||''):'',comentario:d.tipo==='Otro'?String(d.comentario||'').trim():''}))};
   const pend=(await kvGet('estadoPend'))||{}; pend[e.tid]=e; await kvSet('estadoPend',pend);
   enviarEstados();
@@ -850,7 +852,7 @@ async function cargarVivo(manual){
       const f=vivoFecha, j=await (await fetch(API+'?accion=vivoFecha&fecha='+f)).json();
       if(f!==vivoFecha) return;
       if(!j.ok){ vivoSel.innerHTML=''; vivoLista.innerHTML='<p class="dur">No se pudo leer esa fecha: '+esc(j.error||'')+'</p>'; return; }
-      vivoDatos={filas:j.filas, estados:j.estados, recibido:Date.now(), fecha:f}; mostrarVivo(); if(manual) aviso('Actualizado ✔');
+      vivoDatos={filas:j.filas, estados:j.estados, cierres:j.cierres||[], recibido:Date.now(), fecha:f}; mostrarVivo(); if(manual) aviso('Actualizado ✔');
     }catch(e){ vivoLista.innerHTML='<p class="dur">No se pudo conectar. Revisa que el Apps Script esté actualizado.</p>'; }
     return;
   }
@@ -858,7 +860,7 @@ async function cargarVivo(manual){
     try{
       const [j,je] = await Promise.all([ fetch(API+'?accion=vivo').then(r=>r.json()), fetch(API+'?accion=estados').then(r=>r.json()).catch(()=>null) ]);
       if(vivoFecha) return;
-      if(j.ok){ vivoDatos={filas:j.filas, estados:(je&&je.ok?je.estados:(vivoDatos&&vivoDatos.estados)||[]), recibido:Date.now()}; await kvSet('vivo', vivoDatos); mostrarVivo(); if(manual) aviso('En vivo actualizado ✔'); return; }
+      if(j.ok){ vivoDatos={filas:j.filas, estados:(je&&je.ok?je.estados:(vivoDatos&&vivoDatos.estados)||[]), cierres:(je&&je.ok?je.cierres:(vivoDatos&&vivoDatos.cierres))||[], recibido:Date.now()}; await kvSet('vivo', vivoDatos); mostrarVivo(); if(manual) aviso('En vivo actualizado ✔'); return; }
     }catch(e){}
   }
   vivoDatos = vivoDatos || (await kvGet('vivo')) || null;
@@ -886,6 +888,7 @@ function imagenVivo(cc){
     const c=cc, f=fil(c)||{}, e=est(c);
     const oper=(e&&e.operador)||f.operadores||'', grupo=(e&&e.grupo)||f.grupo||'', turno=(e&&e.turno)||f.turno||'';
     y+=50; txt(oper?oper+' · '+grupo+' · '+turno:'Aún no envía datos','34px '+F,TX,P);
+    if(e||!f.sin){ const okc=ckVivo(c,e); y+=56; txt(okc?'✅ CHECKLIST ENVIADO':'⏳ SIN CHECKLIST','800 36px '+F,okc?'#7ee2a8':'#ffc20e',P); }
     y+=90; txt(String(f.vueltas||0),'800 70px '+F,AM,P); txt(ton(f.ton)+' t','800 70px '+F,AM,W-P,'right');
     y+=40; txt('vueltas','28px '+F,SB,P); txt('toneladas','28px '+F,SB,W-P,'right');
     y+=30; if(f.horaUlt||f.ultima){ y+=40; txt('Última vuelta: '+(f.horaUlt||new Date(f.ultima).toTimeString().slice(0,5)),'30px '+F,SB,P); }
@@ -909,7 +912,7 @@ function imagenVivo(cc){
     lista.forEach(c=>{ const f=fil(c)||{}, e=est(c);
       const det=e&&(e.detenciones||[]).find(z=>z.inicio&&!z.fin);
       const estado=hist?((e&&e.horaFin)?'Turno cerrado':'Registro'):(e&&e.horaFin)||f.cerrado?'Turno cerrado':det?'Detenido · '+(det.tipo||''):f.ultima&&(ahoraMs-f.ultima)/60000>40?'Sin reporte':'Operando';
-      fila('CAEX '+c, (f.vueltas||0)+' v · '+ton(f.ton)+' t', ((e&&e.operador)||f.operadores||'')+' · '+estado, det?'#ff9a9d':''); });
+      fila('CAEX '+c, (f.vueltas||0)+' v · '+ton(f.ton)+' t', ((e&&e.operador)||f.operadores||'')+' · '+estado+' · '+(ckVivo(c,e)?'✅ Checklist':'⏳ Sin checklist'), det?'#ff9a9d':''); });
   }
   y+=60; txt('Registro Operadores CAEX · Eric Tapia Valenzuela','26px '+F,SB,P); y+=10;
   cv.width=W; cv.height=y+P; g.fillStyle='#1f252d'; g.fillRect(0,0,W,cv.height); g.strokeStyle=AM; g.lineWidth=4; g.strokeRect(10,10,W-20,cv.height-20);
@@ -968,10 +971,17 @@ function mostrarVivo(sinSenal){
   const color=(f,e)=>{ if(hist) return f&&!f.sin?'#ffc20e':'#3a434e'; if(cerrado(f,e)) return '#6b7682'; if(e&&(e.detenciones||[]).some(d=>d.inicio&&!d.fin)) return '#e5484d';
     if(f&&!f.sin&&f.ultima){ const m=(ahoraMs-f.ultima)/60000; return m>40?'#ffc20e':'#2fbf71'; } return e&&e.horaInicio?'#2fbf71':'#3a434e'; };
   vivoSel.innerHTML=`<button class="todos ${vivoCaex===''?'sel':''}" onclick="elegirVivo('')">📋 Todos los CAEX</button>`+lista.map(c=>{ const f=fil(c),e=est(c);
-    return `<button class="${vivoCaex===c?'sel':''}" onclick="elegirVivo('${esc(c)}')"><span class="pt" style="background:${color(f,e)}"></span>${esc(c)}<small>${f&&!f.sin?(f.vueltas||0)+' v · '+(f.ton||0).toLocaleString('es-CL')+' t':(e&&e.horaInicio?'En turno':'Sin datos')}</small></button>`; }).join('');
+    return `<button class="${vivoCaex===c?'sel':''}" onclick="elegirVivo('${esc(c)}')"><span class="pt" style="background:${color(f,e)}"></span>${esc(c)}<small>${ckVivo(c,e)?'✅ ':''}${f&&!f.sin?(f.vueltas||0)+' v · '+(f.ton||0).toLocaleString('es-CL')+' t':(e&&e.horaInicio?'En turno':'Sin datos')}</small></button>`; }).join('');
   const ver = vivoCaex ? [vivoCaex] : lista.filter(c=>fil(c)||est(c));
   vivoLista.innerHTML = ver.length ? ver.map(c=>tarjetaVivo(c,fil(c),est(c),!!vivoCaex,ahoraMs,hist)).join('') : '<p class="dur">'+(hist?'No hay datos de esa fecha y turno.':'Aún no hay datos en este turno.')+'</p>';
 }
+/* ¿El operador ya envió la foto del checklist? (aviso en vivo, o turno ya cerrado en la hoja) */
+function ckVivo(c,e){
+  if(e&&e.checklist) return true;
+  const hist=vivoDatos&&vivoDatos.fecha, cs=(vivoDatos&&vivoDatos.cierres)||[];
+  return cs.some(z=>String(z.caex)===String(c)&&z.checklist&&(hist?sinTilde(z.turno)===sinTilde(vivoTurno):(!e||(String(z.fecha)===String(e.fecha)&&sinTilde(z.turno)===sinTilde(e.turno)))));
+}
+const ckBadge=ok=>ok?'<span class="ckb ok">✅ Checklist</span>':'<span class="ckb no">⏳ Sin checklist</span>';
 function tarjetaVivo(c,f,e,detalle,ahoraMs,hist){
   f=f||{caex:c,sin:true};
   const min=f.ultima&&!hist?Math.round((ahoraMs-f.ultima)/60000):null;
@@ -982,16 +992,16 @@ function tarjetaVivo(c,f,e,detalle,ahoraMs,hist){
   const oper=(e&&e.operador)||f.operadores||'', grupo=(e&&e.grupo)||f.grupo||'', turno=(e&&e.turno)||f.turno||'';
   let h=`<div class="vivo ${yo?'yo':''} ${((e&&e.horaFin)||f.cerrado)&&!detalle&&!hist?'apagado':''}">
       <div class="vcab"><b>CAEX ${esc(c)}</b>${pill}</div>
-      <div class="vop">${oper?esc(oper)+' · '+esc(grupo)+' · '+esc(turno):'Aún no envía datos'}${f.revisar?' · ⚠️ '+f.revisar+' foto(s) a revisar':''}</div>
+      ${(e||!f.sin)?'<div style="margin:2px 0 6px">'+ckBadge(ckVivo(c,e))+'</div>':''}<div class="vop">${oper?esc(oper)+' · '+esc(grupo)+' · '+esc(turno):'Aún no envía datos'}${f.revisar?' · ⚠️ '+f.revisar+' foto(s) a revisar':''}</div>
       <div class="vnum"><div><b>${f.vueltas||0}</b><small>vueltas</small></div><div><b>${(f.ton||0).toLocaleString('es-CL')}</b><small>toneladas</small></div><div><b>${hora}</b><small>${min==null?'última vuelta':'hace '+min+' min'}</small></div></div>`;
   if(detalle) h+=registroVivo(e);
   return h+'</div>';
 }
 function registroVivo(e){
-  if(!e||!e.horaInicio) return '<div class="vreg"><h4>🕒 Registro del turno</h4><p class="dur">El operador aún no marca la hora de inicio de turno.</p></div>';
+  if(!e||!e.horaInicio) return '<div class="vreg"><h4>🕒 Registro del turno</h4><p class="dur">El operador aún no marca la hora de inicio de turno.</p>'+(e&&e.checklist?'<p>✅ Ya envió la foto del checklist.</p>':'')+'</div>';
   const durM=(a,b)=>{ const m=minutos(a,b); return m>0?' ('+(m>=60?Math.floor(m/60)+' h '+p2(m%60)+' min':m+' min')+')':''; };
   const lin=(t,v,sub,curso)=>`<div class="lin"><span>${t}${sub?'<i>'+sub+'</i>':''}</span><b class="${curso?'curso':''}">${v}</b></div>`;
-  let h='<div class="vreg"><h4>🕒 Registro del turno</h4>'+lin('🟢 Inicio de turno',esc(e.horaInicio));
+  let h='<div class="vreg"><h4>🕒 Registro del turno</h4>'+lin('📋 Checklist', ckVivo(e.caex,e)?'✅ Enviado':'⏳ Pendiente')+lin('🟢 Inicio de turno',esc(e.horaInicio));
   if(e.colIni) h+=lin('🍽️ Colación', e.colFin?esc(e.colIni)+' a '+esc(e.colFin)+durM(e.colIni,e.colFin):esc(e.colIni)+' · en curso','',!e.colFin);
   else h+=lin('🍽️ Colación','—');
   (e.detenciones||[]).forEach((d,i)=>{
