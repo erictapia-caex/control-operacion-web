@@ -860,7 +860,7 @@ async function cargarVivo(manual){
     try{
       const [j,je] = await Promise.all([ fetch(API+'?accion=vivo').then(r=>r.json()), fetch(API+'?accion=estados').then(r=>r.json()).catch(()=>null) ]);
       if(vivoFecha) return;
-      if(j.ok){ vivoDatos={filas:j.filas, estados:(je&&je.ok?je.estados:(vivoDatos&&vivoDatos.estados)||[]), cierres:(je&&je.ok?je.cierres:(vivoDatos&&vivoDatos.cierres))||[], recibido:Date.now()}; await kvSet('vivo', vivoDatos); mostrarVivo(); if(manual) aviso('En vivo actualizado ✔'); return; }
+      if(j.ok){ vivoDatos={filas:j.filas, estados:(je&&je.ok?je.estados:(vivoDatos&&vivoDatos.estados)||[]), cierres:(je&&je.ok?je.cierres:(vivoDatos&&vivoDatos.cierres))||[], totales:j.totales||null, recibido:Date.now()}; await kvSet('vivo', vivoDatos); mostrarVivo(); if(manual) aviso('En vivo actualizado ✔'); return; }
     }catch(e){}
   }
   vivoDatos = vivoDatos || (await kvGet('vivo')) || null;
@@ -873,7 +873,7 @@ function imagenVivo(cc){
   const W=1080, P=50, cv=document.createElement('canvas'), g=cv.getContext('2d');
   const F='system-ui,-apple-system,Segoe UI,Roboto,sans-serif', AM='#ffc20e', TX='#eef1f4', SB='#9aa5b1', LN='#2e3641';
   const hist=!!vivoDatos.fecha, mismoT=x=>!hist||sinTilde(x.turno)===sinTilde(vivoTurno);
-  const filas=(vivoDatos.filas||[]).filter(mismoT), ests=(vivoDatos.estados||[]).filter(mismoT), ahoraMs=Date.now();
+  const filas=(vivoDatos.filas||[]).filter(mismoT), ests=(vivoDatos.estados||[]).filter(x=>mismoT(x)&&(hist||!x.horaFin)), ahoraMs=Date.now();
   const fil=c=>filas.find(f=>String(f.caex)===String(c)), est=c=>ests.find(e=>String(e.caex)===String(c));
   const ops=[]; let y=0;
   const txt=(t,f,col,x,al)=>{ const yy=y; ops.push(()=>{ g.font=f; g.fillStyle=col; g.textAlign=al||'left'; g.fillText(t,x,yy); g.textAlign='left'; }); };
@@ -883,7 +883,7 @@ function imagenVivo(cc){
   const d=new Date(), fecha=hist?fF(vivoDatos.fecha)+' · Turno '+vivoTurno:p2(d.getDate())+'-'+p2(d.getMonth()+1)+'-'+d.getFullYear()+' · '+ahora();
   y+=80; txt((hist?'REGISTRO':'EN VIVO')+' · '+(cc?'CAEX '+cc:'TODOS LOS CAEX'),'800 50px '+F,AM,P);
   y+=46; txt(fecha,'30px '+F,SB,P); y+=20;
-  const vF=filas.reduce((s,f)=>s+(f.vueltas||0),0), tF=filas.reduce((s,f)=>s+(f.ton||0),0);
+  const vF=(!hist&&vivoDatos.totales)?vivoDatos.totales.vueltas:filas.reduce((s,f)=>s+(f.vueltas||0),0), tF=(!hist&&vivoDatos.totales)?vivoDatos.totales.ton:filas.reduce((s,f)=>s+(f.ton||0),0);
   if(cc){
     const c=cc, f=fil(c)||{}, e=est(c);
     const oper=(e&&e.operador)||f.operadores||'', grupo=(e&&e.grupo)||f.grupo||'', turno=(e&&e.turno)||f.turno||'';
@@ -960,9 +960,10 @@ async function enviarVivoSel(){
 function mostrarVivo(sinSenal){
   if(!vivoDatos){ vivoSel.innerHTML=''; vivoLista.innerHTML='<p class="dur">Cargando… (necesita señal la primera vez)</p>'; return; }
   const hist=!!vivoDatos.fecha, mismoT=x=>!hist||sinTilde(x.turno)===sinTilde(vivoTurno);
-  const filas=(vivoDatos.filas||[]).filter(mismoT), ests=(vivoDatos.estados||[]).filter(mismoT), ahoraMs=Date.now();
-  vivoV.textContent=filas.reduce((s,f)=>s+(f.vueltas||0),0);
-  vivoT.textContent=(Math.round(filas.reduce((s,f)=>s+(f.ton||0),0)*10)/10).toLocaleString('es-CL')+' t';
+  const filas=(vivoDatos.filas||[]).filter(mismoT), ests=(vivoDatos.estados||[]).filter(x=>mismoT(x)&&(hist||!x.horaFin)), ahoraMs=Date.now();
+  const totF=(!hist&&vivoDatos.totales)||{vueltas:filas.reduce((s,f)=>s+(f.vueltas||0),0),ton:filas.reduce((s,f)=>s+(f.ton||0),0)};
+  vivoV.textContent=totF.vueltas;
+  vivoT.textContent=(Math.round(totF.ton*10)/10).toLocaleString('es-CL')+' t';
   const hace=Math.round((ahoraMs-vivoDatos.recibido)/60000);
   vivoInfo.textContent= hist ? '📅 Registro del '+fF(vivoDatos.fecha)+' · Turno '+vivoTurno : (sinSenal?'📵 Sin señal · ':'')+'Actualizado '+(hace<1?'recién':'hace '+hace+' min')+' · se actualiza solo cada minuto';
   const fil=c=>filas.find(f=>String(f.caex)===String(c)), est=c=>ests.find(e=>String(e.caex)===String(c));
@@ -979,7 +980,7 @@ function mostrarVivo(sinSenal){
 function ckVivo(c,e){
   if(e&&e.checklist) return true;
   const hist=vivoDatos&&vivoDatos.fecha, cs=(vivoDatos&&vivoDatos.cierres)||[];
-  return cs.some(z=>String(z.caex)===String(c)&&z.checklist&&(hist?sinTilde(z.turno)===sinTilde(vivoTurno):(!e||(String(z.fecha)===String(e.fecha)&&sinTilde(z.turno)===sinTilde(e.turno)))));
+  return cs.some(z=>String(z.caex)===String(c)&&z.checklist&&(hist?sinTilde(z.turno)===sinTilde(vivoTurno):(!!e&&String(z.fecha)===String(e.fecha)&&sinTilde(z.turno)===sinTilde(e.turno))));
 }
 const ckBadge=ok=>ok?'<span class="ckb ok">✅ Checklist</span>':'<span class="ckb no">⏳ Sin checklist</span>';
 function tarjetaVivo(c,f,e,detalle,ahoraMs,hist){
