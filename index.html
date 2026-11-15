@@ -767,6 +767,7 @@ async function enviarTurno(){
   const falta=faltantes(true);
   if(falta.length) return alert('⚠️ No se puede enviar porque faltan los siguientes datos:\n\n• '+falta.join('\n• '));
   enviandoTurno=true;
+  try{ clearTimeout(tEstado); await prepararEstado(); }catch(e){}
   try{ await encolar('Fin de turno'); } finally { enviandoTurno=false; }
   draft = nuevo(); calMes=null; await kvSet('draft', draft); pintar(); scrollTo(0,0);
   aviso(navigator.onLine ? 'Enviando turno…' : 'Sin señal: el turno quedó guardado y se enviará solo al volver la señal');
