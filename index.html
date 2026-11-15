@@ -168,6 +168,10 @@ input:disabled,select:disabled{opacity:.6}
 .envop small{margin-left:auto;color:var(--sub);font-weight:600;font-size:12px}
 .envgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
 .envgrid .envop{flex-wrap:wrap;gap:4px 8px}.envgrid .envop small{margin-left:30px;width:100%}
+.rtit{font-weight:800;color:var(--am);margin:10px 0 6px}
+.rturno{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#12161b;border:1px solid var(--line);border-left:4px solid var(--am);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.rturno small{display:block;color:var(--sub);font-size:12px;font-weight:600}
+.rnum{display:flex;gap:14px;text-align:right}.rnum span{font-weight:900;font-size:18px;color:var(--am)}
 .ckb{display:inline-block;font-size:12px;font-weight:800;padding:3px 9px;border-radius:20px}
 .ckb.ok{background:#123322;color:#7ee2a8;border:1px solid #2fbf71}.ckb.no{background:#3a3110;color:#ffc20e;border:1px solid #6b5714}
 .vreg{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
@@ -345,6 +349,7 @@ textarea{width:100%;font:inherit;font-size:16px;padding:12px;border-radius:10px;
     </div>
     <div id="histInfo" class="dur"></div>
     <div id="histCuenta" class="cuenta"></div>
+    <div id="histResumen"></div>
     <div id="historial" class="pend" style="text-align:left"></div>
     <button id="btnBorrarSel" class="borrarsel" onclick="borrarSeleccion()" hidden>Borrar seleccionados</button>
     <button id="btnImprSel" class="imprsel" onclick="imprimirSeleccion()" hidden>Imprimir seleccionados</button>
@@ -861,7 +866,7 @@ async function cargarVivo(manual){
     try{
       const [j,je] = await Promise.all([ fetch(API+'?accion=vivo').then(r=>r.json()), fetch(API+'?accion=estados').then(r=>r.json()).catch(()=>null) ]);
       if(vivoFecha) return;
-      if(j.ok){ vivoDatos={filas:j.filas, estados:(je&&je.ok?je.estados:(vivoDatos&&vivoDatos.estados)||[]), cierres:(je&&je.ok?je.cierres:(vivoDatos&&vivoDatos.cierres))||[], totales:j.totales||null, recibido:Date.now()}; await kvSet('vivo', vivoDatos); mostrarVivo(); if(manual) aviso('En vivo actualizado ✔'); return; }
+      if(j.ok){ vivoDatos={filas:j.filas, estados:(je&&je.ok?je.estados:(vivoDatos&&vivoDatos.estados)||[]), cierres:(je&&je.ok?je.cierres:(vivoDatos&&vivoDatos.cierres))||[], totales:j.totales||null, turnoActual:j.turnoActual||null, recibido:Date.now()}; await kvSet('vivo', vivoDatos); mostrarVivo(); if(manual) aviso('En vivo actualizado ✔'); return; }
     }catch(e){}
   }
   vivoDatos = vivoDatos || (await kvGet('vivo')) || null;
@@ -874,7 +879,7 @@ function imagenVivo(cc){
   const W=1080, P=50, cv=document.createElement('canvas'), g=cv.getContext('2d');
   const F='system-ui,-apple-system,Segoe UI,Roboto,sans-serif', AM='#ffc20e', TX='#eef1f4', SB='#9aa5b1', LN='#2e3641';
   const hist=!!vivoDatos.fecha, mismoT=x=>!hist||sinTilde(x.turno)===sinTilde(vivoTurno);
-  const filas=(vivoDatos.filas||[]).filter(mismoT), ests=(vivoDatos.estados||[]).filter(x=>mismoT(x)&&(hist||!x.horaFin)), ahoraMs=Date.now();
+  const filas=(vivoDatos.filas||[]).filter(mismoT), ests=(vivoDatos.estados||[]).filter(x=>mismoT(x)&&(hist||(!x.horaFin&&(!vivoDatos.turnoActual||(String(x.fecha)===String(vivoDatos.turnoActual.fecha)&&sinTilde(x.turno)===sinTilde(vivoDatos.turnoActual.turno)))))), ahoraMs=Date.now();
   const fil=c=>filas.find(f=>String(f.caex)===String(c)), est=c=>ests.find(e=>String(e.caex)===String(c));
   const ops=[]; let y=0;
   const txt=(t,f,col,x,al)=>{ const yy=y; ops.push(()=>{ g.font=f; g.fillStyle=col; g.textAlign=al||'left'; g.fillText(t,x,yy); g.textAlign='left'; }); };
@@ -961,7 +966,7 @@ async function enviarVivoSel(){
 function mostrarVivo(sinSenal){
   if(!vivoDatos){ vivoSel.innerHTML=''; vivoLista.innerHTML='<p class="dur">Cargando… (necesita señal la primera vez)</p>'; return; }
   const hist=!!vivoDatos.fecha, mismoT=x=>!hist||sinTilde(x.turno)===sinTilde(vivoTurno);
-  const filas=(vivoDatos.filas||[]).filter(mismoT), ests=(vivoDatos.estados||[]).filter(x=>mismoT(x)&&(hist||!x.horaFin)), ahoraMs=Date.now();
+  const filas=(vivoDatos.filas||[]).filter(mismoT), ests=(vivoDatos.estados||[]).filter(x=>mismoT(x)&&(hist||(!x.horaFin&&(!vivoDatos.turnoActual||(String(x.fecha)===String(vivoDatos.turnoActual.fecha)&&sinTilde(x.turno)===sinTilde(vivoDatos.turnoActual.turno)))))), ahoraMs=Date.now();
   const totF=(!hist&&vivoDatos.totales)||{vueltas:filas.reduce((s,f)=>s+(f.vueltas||0),0),ton:filas.reduce((s,f)=>s+(f.ton||0),0)};
   vivoV.textContent=totF.vueltas;
   vivoT.textContent=(Math.round(totF.ton*10)/10).toLocaleString('es-CL')+' t';
@@ -1045,6 +1050,7 @@ function mostrarHist(){
   const lista = (modoF==='caex' && !fc) ? [] : histDatos.filter(x=>(!fc||String(x.caex)===fc)&&(!ff||String(x.fecha)===ff));
   histCuenta.textContent = (modoF==='caex' && !fc) ? 'Elige un CAEX para ver sus turnos.' :
     lista.length+(lista.length===1?' turno':' turnos')+' · '+(fc?'CAEX '+fc:'todos los CAEX')+' · '+(ff?fF(ff):'todas las fechas');
+  resumenTurnos(lista, modoF==='caex' && !fc);
   const sel_ = elim||impr||envm;
   historial.innerHTML = lista.length ? lista.map(x=>`<label class="hist" ${sel_?'':`onclick="verTurno('${x.id}')"`}><div class="izq">${sel_?`<input type="checkbox" class="chk" value="${x.id}" onchange="contarSel()">`:''}<div>${fF(x.fecha)} · ${x.grupo?esc(x.grupo)+' · ':''}${x.turno||''}<small>CAEX ${x.caex}${x.operador?' · '+esc(x.operador):''} · ${x.vueltas||0} vuelta(s)${x.horas!==''&&x.horas!=null?' · '+x.horas+' h':''}</small></div></div>
     <div class="der"><b>${x.total||0} t${sel_?'':'<span class="ver">Ver ›</span>'}</b>${sel_?'':`<button class="editar" onclick="event.preventDefault();event.stopPropagation();editarTurno('${x.id}')">✏️ Editar</button>`}</div></label>`).join('') : ((modoF==='caex'&&!fCaex.value)?'':histDatos.length?'No hay turnos con ese filtro.':'Aún no hay turnos enviados.');
@@ -1052,6 +1058,16 @@ function mostrarHist(){
   btnImprSel.hidden=!impr; btnPdfSel.hidden=!impr; btnImpr.classList.toggle('on',impr); btnImpr.textContent = impr?'✕ Cancelar':'🖨️ Imprimir';
   boxEnv.hidden=!envm; btnEnv.classList.toggle('on',envm); btnEnv.textContent = envm?'✕ Cancelar':'📤 Enviar';
   contarSel();
+}
+/* Resumen por turno: fecha · Día/Noche · grupo → total vueltas y toneladas de todos los CAEX */
+function resumenTurnos(lista, vacio){
+  if(vacio || !lista.length){ histResumen.innerHTML=''; return; }
+  const g={};
+  lista.forEach(x=>{ const k=x.fecha+'|'+(x.turno||'')+'|'+(x.grupo||''); const r=g[k]=g[k]||{fecha:x.fecha,turno:x.turno||'',grupo:x.grupo||'',v:0,t:0,caex:new Set(),ops:new Set()};
+    r.v+=Number(x.vueltas)||0; r.t+=Number(x.total)||0; r.caex.add(String(x.caex)); if(x.operador) r.ops.add(String(x.operador)); });
+  const orden=r=>String(r.fecha)+(sinTilde(r.turno)==='noche'?'2':'1');
+  const rs=Object.values(g).sort((a,b)=>orden(b).localeCompare(orden(a))).slice(0,12);
+  histResumen.innerHTML='<div class="rtit">📊 Totales por turno</div>'+rs.map(r=>`<div class="rturno"><div><b>${fF(r.fecha)} · ${sinTilde(r.turno)==='noche'?'🌙':'☀️'} ${esc(r.turno)}${r.grupo?' · '+esc(r.grupo):''}</b><small>${r.caex.size} CAEX · ${r.ops.size} operador(es)</small></div><div class="rnum"><span>${r.v}<small>vueltas</small></span><span>${(Math.round(r.t*10)/10).toLocaleString('es-CL')}<small>toneladas</small></span></div></div>`).join('');
 }
 function modoEliminar(){ elim=!elim; impr=false; envm=false; mostrarHist(); }
 function modoEnviar(){ envm=!envm; elim=false; impr=false; mostrarHist(); if(envm) aviso('Marca los turnos que quieres enviar ✔'); }
