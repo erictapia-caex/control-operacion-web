@@ -238,19 +238,25 @@ textarea{width:100%;font:inherit;font-size:16px;padding:12px;border-radius:10px;
   .vgrid div{border-color:#ccc;color:#000;padding:3px 2px}
 }
 .tabs.t4{grid-template-columns:repeat(4,1fr)}
-.mpbar{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
-.mpbar button{flex:1;min-width:22%;padding:10px 6px;font-size:13px;font-weight:800;border-radius:10px;background:var(--card);color:var(--txt);border:2px solid var(--line)}
-.mpbar button.on{background:var(--am);color:#111;border-color:var(--am)}
-.mpbar button.mov{background:#e5484d;border-color:#e5484d;color:#fff}
-#mpWrap{position:relative;border-radius:12px;overflow:hidden;border:2px solid var(--line);background:#0b0d10;touch-action:none}
-#mpSvg{display:block;width:100%;height:70vh;touch-action:none;user-select:none}
-#mpZoom{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:6px}
-#mpZoom button{width:42px;height:42px;font-size:22px;font-weight:800;border-radius:10px;background:rgba(14,17,21,.85);color:#fff;border:1px solid #444}
-#mpInfo{font-size:13px;color:var(--sub);margin:6px 2px}
-#mpSel{font-size:14px;margin:6px 2px;min-height:20px}
+#vMapa{position:fixed;inset:0;z-index:60;background:#0b0d10}
+#mpSvg{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;user-select:none}
+#mpVolver{position:absolute;left:10px;top:calc(10px + env(safe-area-inset-top));padding:10px 14px;border-radius:12px;border:0;background:var(--am);color:#111;font-weight:900;font-size:15px;box-shadow:0 2px 8px #0008}
+#mpLado{position:absolute;right:8px;top:calc(10px + env(safe-area-inset-top));bottom:70px;width:78px;display:flex;flex-direction:column;gap:6px;overflow-y:auto}
+#mpLado button{width:100%;padding:7px 2px;border-radius:12px;border:1px solid #555;background:rgba(14,17,21,.86);color:#fff;font-weight:800;font-size:18px;line-height:1.1}
+#mpLado button i{display:block;font-style:normal;font-size:10.5px;margin-top:2px}
+#mpLado button.z{font-size:22px;padding:6px 2px}
+#mpLado button.on{background:var(--am);color:#111;border-color:var(--am)}
+#mpLado .sep{height:4px}
+#mpMover{font-size:10.5px!important;padding:9px 3px!important;background:#1f6feb!important;border-color:#1f6feb!important}
+#mpMover.mov{background:#e5484d!important;border-color:#e5484d!important}
+#mpAdd{display:flex;flex-direction:column;gap:6px}#mpAdd[hidden]{display:none}
+#mpAdd button{font-size:12px!important;padding:10px 2px!important}
+#mpAbajo{position:absolute;left:8px;right:94px;bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:none}
+#mpSel:not(:empty){pointer-events:auto;display:inline-block;background:rgba(14,17,21,.9);padding:8px 10px;border-radius:10px;font-size:14px;margin-bottom:6px}
 #mpSel button{margin-left:8px;padding:4px 10px;border-radius:8px;border:0;background:#e5484d;color:#fff;font-weight:800}
+#mpInfo{display:inline-block;background:rgba(14,17,21,.75);color:#cfd6dd;font-size:11.5px;padding:5px 8px;border-radius:8px}
 .gpsbar{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:10px 12px;border-radius:12px;background:var(--card);border:2px solid var(--line);font-size:14px}
-.gpsbar b{flex:1}
+.gpsbar[hidden]{display:none}.gpsbar b{flex:1}
 .gpsbar button{padding:8px 12px;border-radius:10px;border:0;font-weight:800}
 .gpsbar.on{border-color:var(--ok)}.gpsbar.on button{background:var(--ok);color:#111}
 .gpsbar.off button{background:#555;color:#fff}
@@ -267,34 +273,33 @@ textarea{width:100%;font:inherit;font-size:16px;padding:12px;border-radius:10px;
 <main>
   <div class="tabs t4"><button id="tabForm" class="sel" onclick="verVista('form')">📝 Registro</button><button id="tabVivo" onclick="verVista('vivo')">📡 En vivo</button><button id="tabHist" onclick="verVista('hist')">📋 Historial</button><button id="tabMapa" onclick="verVista('mapa')">🗺️ Mapa</button></div>
   <div id="vMapa" hidden>
-    <h2>🗺️ Mapa de la mina</h2>
-    <div class="mpbar">
-      <button id="mpBFoto" class="on" onclick="mpCapa('foto',this)">Foto</button>
-      <button id="mpBCam" class="on" onclick="mpCapa('cam',this)">Caminos</button>
-      <button id="mpBEq" class="on" onclick="mpCapa('eq',this)">Carguío</button>
-      <button id="mpBCx" class="on" onclick="mpCapa('cx',this)">CAEX</button>
-    </div>
-    <div id="mpWrap">
-      <svg id="mpSvg" viewBox="0 0 1100 1000" xmlns="http://www.w3.org/2000/svg">
-        <rect width="1100" height="1000" fill="#3a3229"/>
-        <g id="mpVp">
-          <image id="mpFoto" x="0" y="0" width="1100" height="1000" preserveAspectRatio="none"/>
-          <g id="mpCam"><g id="mpCamB"></g><g id="mpCamT"></g></g>
-          <g id="mpEq"></g>
-          <g id="mpCx"></g>
-        </g>
-      </svg>
-      <div id="mpZoom"><button onclick="mpZoomBtn(1.5)">+</button><button onclick="mpZoomBtn(1/1.5)">−</button><button onclick="mpCentrar()" style="font-size:15px">⌖</button></div>
-    </div>
-    <div id="mpSel"></div>
-    <div class="mpbar">
+    <svg id="mpSvg" viewBox="0 0 1100 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <rect x="-2000" y="-2000" width="5100" height="5000" fill="#3a3229"/>
+      <g id="mpVp">
+        <image id="mpFoto" x="0" y="0" width="1100" height="1000" preserveAspectRatio="none"/>
+        <g id="mpCam"><g id="mpCamB"></g><g id="mpCamT"></g></g>
+        <g id="mpEq"></g>
+        <g id="mpCx"></g>
+      </g>
+    </svg>
+    <button id="mpVolver" onclick="history.back()">← Volver</button>
+    <div id="mpLado">
+      <button onclick="mpZoomBtn(1.5)" class="z">＋</button>
+      <button onclick="mpZoomBtn(1/1.5)" class="z">−</button>
+      <button onclick="mpCentrar()" class="z">⌖</button>
+      <span class="sep"></span>
+      <button id="mpBFoto" class="on" onclick="mpCapa('foto',this)">🛰️<i>Foto</i></button>
+      <button id="mpBCam" class="on" onclick="mpCapa('cam',this)">〰️<i>Caminos</i></button>
+      <button id="mpBEq" class="on" onclick="mpCapa('eq',this)">⛏️<i>Carguío</i></button>
+      <button id="mpBCx" class="on" onclick="mpCapa('cx',this)">🚚<i>CAEX</i></button>
+      <span class="sep"></span>
       <button id="mpMover" onclick="mpMover()">MOVER EQUIPOS DE CARGUÍO</button>
+      <div id="mpAdd" hidden>
+        <button id="mpAddP" onclick="mpAgregar('pala')">＋ Pala</button>
+        <button id="mpAddC" onclick="mpAgregar('carg')">＋ Cargador</button>
+      </div>
     </div>
-    <div class="mpbar" id="mpAdd" hidden>
-      <button id="mpAddP" onclick="mpAgregar('pala')">＋ Pala</button>
-      <button id="mpAddC" onclick="mpAgregar('carg')">＋ Cargador</button>
-    </div>
-    <div id="mpInfo">Cargando mapa…</div>
+    <div id="mpAbajo"><div id="mpSel"></div><div id="mpInfo">Cargando mapa…</div></div>
   </div>
 
   <div id="vVivo" hidden>
@@ -872,7 +877,9 @@ async function cargarHist(manual){
 }
 let modoF='todo';
 let accesoOk=false; /* clave para Historial y En vivo: se pide una vez cada vez que se abre la app */
+let mpPrev='form', mpDesdeAtras=false;
 function verVista(v){
+  if(v==='mapa' && vMapa.hidden){ mpPrev=!vVivo.hidden?'vivo':!vHist.hidden?'hist':'form'; }
   if((v==='hist'||v==='vivo'||v==='mapa') && !accesoOk){
     const k=prompt('Ingresa la clave para ver '+(v==='hist'?'el Historial':v==='mapa'?'el Mapa':'En vivo')+':'); if(k===null) return;
     if(k.trim()!==CLAVE_BORRAR) return alert('Clave incorrecta.');
@@ -882,7 +889,7 @@ function verVista(v){
   tabForm.classList.toggle('sel',v==='form'); tabHist.classList.toggle('sel',v==='hist'); tabVivo.classList.toggle('sel',v==='vivo');
   if(v==='hist'){ mostrarHist(); cargarHist(); }
   if(v==='vivo'){ mostrarVivo(); cargarVivo(); }
-  if(v==='mapa'){ mpAbrir(); }
+  if(v==='mapa'){ mpAbrir(); try{ history.pushState({mapa:1},''); }catch(e){} document.body.style.overflow='hidden'; } else document.body.style.overflow='';
   scrollTo(0,0);
 }
 
@@ -1402,7 +1409,7 @@ async function mpCargar(manual){
   if(j){ mpEqs=j.equipos||[]; mpDibEq(); mpDibCaminos(j.caminos||[]); mpDibCx(j.caex||[]); }
   mpInfo.textContent='Sin señal: se muestra lo último guardado.';
 }
-function mpAbrir(){ mpAplicar(); mpCargarFoto(); mpCargar(); clearInterval(mpT); mpT=setInterval(()=>{ if(!vMapa.hidden) mpCargar(); else clearInterval(mpT); },20000); }
+function mpAbrir(){ requestAnimationFrame(mpCentrar); mpCargarFoto(); mpCargar(); clearInterval(mpT); mpT=setInterval(()=>{ if(!vMapa.hidden) mpCargar(); else clearInterval(mpT); },20000); }
 function mpMover(){
   if(!mpMov){
     const k=prompt('Clave para mover los equipos de carguío:'); if(k===null) return;
@@ -1426,12 +1433,15 @@ function mpAddTipo(t){ mpAdd_=t; mpAddP.classList.toggle('on',t==='pala'); mpAdd
 /* zoom y arrastre */
 let mpPtr={}, mpPan=null, mpPinch=null;
 function mpAplicar(){ mpVp.setAttribute('transform','translate('+mpTX+','+mpTY+') scale('+mpS+')'); }
-function mpPt(ev){ const r=mpSvg.getBoundingClientRect(), s=Math.max(1100/r.width,1000/r.height), ox=(r.width*s-1100)/2, oy=(r.height*s-1000)/2; return {x:(ev.clientX-r.left)*s-ox, y:(ev.clientY-r.top)*s-oy}; }
+function mpEsc(){ const r=mpSvg.getBoundingClientRect(), s=Math.min(1100/r.width,1000/r.height); return {r,s,ox:(r.width*s-1100)/2,oy:(r.height*s-1000)/2}; }
+function mpPt(ev){ const k=mpEsc(); return {x:(ev.clientX-k.r.left)*k.s-k.ox, y:(ev.clientY-k.r.top)*k.s-k.oy}; }
+function mpVis(){ const k=mpEsc(); return {x0:-k.ox, x1:k.r.width*k.s-k.ox, y0:-k.oy, y1:k.r.height*k.s-k.oy}; }
 function mpMapa(p){ return {x:(p.x-mpTX)/mpS, y:(p.y-mpTY)/mpS}; }
-function mpLim(){ mpTX=Math.min(0,Math.max(1100-1100*mpS,mpTX)); mpTY=Math.min(0,Math.max(1000-1000*mpS,mpTY)); }
+function mpLim(){ const v=mpVis(); if(!(v.x1>v.x0)) return; mpTX=Math.min(v.x0,Math.max(v.x1-1100*mpS,mpTX)); mpTY=Math.min(v.y0,Math.max(v.y1-1000*mpS,mpTY)); }
 function mpZoomEn(f,p){ const ns=Math.max(1,Math.min(10,mpS*f)); mpTX=p.x-(p.x-mpTX)*ns/mpS; mpTY=p.y-(p.y-mpTY)*ns/mpS; mpS=ns; mpLim(); mpAplicar(); }
-function mpZoomBtn(f){ mpZoomEn(f,{x:550,y:500}); }
-function mpCentrar(){ const c=mpXY(-28.29607,-70.80603); mpS=2.2; mpTX=550-c.x*mpS; mpTY=500-c.y*mpS; mpLim(); mpAplicar(); }
+function mpZoomBtn(f){ const v=mpVis(); mpZoomEn(f,{x:(v.x0+v.x1)/2,y:(v.y0+v.y1)/2}); }
+function mpCentrar(){ const v=mpVis(), c=mpXY(-28.29607,-70.80603); mpS=1.6; mpTX=(v.x0+v.x1)/2-c.x*mpS; mpTY=(v.y0+v.y1)/2-c.y*mpS; mpLim(); mpAplicar(); }
+window.addEventListener('popstate',()=>{ if(!vMapa.hidden){ if(mpMov && !confirm('Tienes equipos movidos sin guardar. ¿Salir igual?')){ try{ history.pushState({mapa:1},''); }catch(e){} return; } mpMov=false; mpAddTipo(null); mpMoverBtn(); verVista(mpPrev); } });
 mpSvg.addEventListener('pointerdown',ev=>{ mpPtr[ev.pointerId]=mpPt(ev); const k=Object.keys(mpPtr);
   if(k.length===2){ const a=mpPtr[k[0]],b=mpPtr[k[1]]; mpPinch={d:Math.hypot(a.x-b.x,a.y-b.y)}; mpArr=null; mpPan=null; return; }
   if(mpMov && mpAdd_){ const m=mpMapa(mpPt(ev)), ll=mpLL(m.x,m.y), t=mpAdd_;
@@ -1444,7 +1454,6 @@ mpSvg.addEventListener('pointermove',ev=>{ if(!(ev.pointerId in mpPtr)) return; 
 function mpUp(ev){ delete mpPtr[ev.pointerId]; if(Object.keys(mpPtr).length<2) mpPinch=null; mpArr=null; mpPan=null; }
 mpSvg.addEventListener('pointerup',mpUp); mpSvg.addEventListener('pointercancel',mpUp);
 mpSvg.addEventListener('wheel',ev=>{ ev.preventDefault(); mpZoomEn(ev.deltaY<0?1.2:1/1.2,mpPt(ev)); },{passive:false});
-mpCentrar();
 
 /* ====== GPS del CAEX: parte al marcar la salida y se apaga al cerrar el turno ====== */
 let gpsWatch=null, gpsUlt=null, gpsBuf=[], gpsEnvio=0, gpsCaex='', gpsOp='';
