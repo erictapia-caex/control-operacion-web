@@ -237,6 +237,23 @@ textarea{width:100%;font:inherit;font-size:16px;padding:12px;border-radius:10px;
   .ckcarga{display:none}
   .vgrid div{border-color:#ccc;color:#000;padding:3px 2px}
 }
+.tabs.t4{grid-template-columns:repeat(4,1fr)}
+.mpbar{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.mpbar button{flex:1;min-width:22%;padding:10px 6px;font-size:13px;font-weight:800;border-radius:10px;background:var(--card);color:var(--txt);border:2px solid var(--line)}
+.mpbar button.on{background:var(--am);color:#111;border-color:var(--am)}
+.mpbar button.mov{background:#e5484d;border-color:#e5484d;color:#fff}
+#mpWrap{position:relative;border-radius:12px;overflow:hidden;border:2px solid var(--line);background:#0b0d10;touch-action:none}
+#mpSvg{display:block;width:100%;height:70vh;touch-action:none;user-select:none}
+#mpZoom{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:6px}
+#mpZoom button{width:42px;height:42px;font-size:22px;font-weight:800;border-radius:10px;background:rgba(14,17,21,.85);color:#fff;border:1px solid #444}
+#mpInfo{font-size:13px;color:var(--sub);margin:6px 2px}
+#mpSel{font-size:14px;margin:6px 2px;min-height:20px}
+#mpSel button{margin-left:8px;padding:4px 10px;border-radius:8px;border:0;background:#e5484d;color:#fff;font-weight:800}
+.gpsbar{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:10px 12px;border-radius:12px;background:var(--card);border:2px solid var(--line);font-size:14px}
+.gpsbar b{flex:1}
+.gpsbar button{padding:8px 12px;border-radius:10px;border:0;font-weight:800}
+.gpsbar.on{border-color:var(--ok)}.gpsbar.on button{background:var(--ok);color:#111}
+.gpsbar.off button{background:#555;color:#fff}
 </style>
 </head>
 <body>
@@ -248,7 +265,38 @@ textarea{width:100%;font:inherit;font-size:16px;padding:12px;border-radius:10px;
 
 <div id="guardado" class="guardado"></div>
 <main>
-  <div class="tabs"><button id="tabForm" class="sel" onclick="verVista('form')">📝 Registro</button><button id="tabVivo" onclick="verVista('vivo')">📡 En vivo</button><button id="tabHist" onclick="verVista('hist')">📋 Historial</button></div>
+  <div class="tabs t4"><button id="tabForm" class="sel" onclick="verVista('form')">📝 Registro</button><button id="tabVivo" onclick="verVista('vivo')">📡 En vivo</button><button id="tabHist" onclick="verVista('hist')">📋 Historial</button><button id="tabMapa" onclick="verVista('mapa')">🗺️ Mapa</button></div>
+  <div id="vMapa" hidden>
+    <h2>🗺️ Mapa de la mina</h2>
+    <div class="mpbar">
+      <button id="mpBFoto" class="on" onclick="mpCapa('foto',this)">Foto</button>
+      <button id="mpBCam" class="on" onclick="mpCapa('cam',this)">Caminos</button>
+      <button id="mpBEq" class="on" onclick="mpCapa('eq',this)">Carguío</button>
+      <button id="mpBCx" class="on" onclick="mpCapa('cx',this)">CAEX</button>
+    </div>
+    <div id="mpWrap">
+      <svg id="mpSvg" viewBox="0 0 1100 1000" xmlns="http://www.w3.org/2000/svg">
+        <rect width="1100" height="1000" fill="#3a3229"/>
+        <g id="mpVp">
+          <image id="mpFoto" x="0" y="0" width="1100" height="1000" preserveAspectRatio="none"/>
+          <g id="mpCam"><g id="mpCamB"></g><g id="mpCamT"></g></g>
+          <g id="mpEq"></g>
+          <g id="mpCx"></g>
+        </g>
+      </svg>
+      <div id="mpZoom"><button onclick="mpZoomBtn(1.5)">+</button><button onclick="mpZoomBtn(1/1.5)">−</button><button onclick="mpCentrar()" style="font-size:15px">⌖</button></div>
+    </div>
+    <div id="mpSel"></div>
+    <div class="mpbar">
+      <button id="mpMover" onclick="mpMover()">MOVER EQUIPOS DE CARGUÍO</button>
+    </div>
+    <div class="mpbar" id="mpAdd" hidden>
+      <button id="mpAddP" onclick="mpAgregar('pala')">＋ Pala</button>
+      <button id="mpAddC" onclick="mpAgregar('carg')">＋ Cargador</button>
+    </div>
+    <div id="mpInfo">Cargando mapa…</div>
+  </div>
+
   <div id="vVivo" hidden>
   <section>
     <h2>📡 En vivo · turno actual</h2>
@@ -269,6 +317,7 @@ textarea{width:100%;font:inherit;font-size:16px;padding:12px;border-radius:10px;
   </section>
   </div>
   <div id="vForm">
+    <div id="gpsBar" class="gpsbar" hidden></div>
   <div class="banner"><img src="banner.jpg" alt=""></div>
   <div id="avisoPend" class="aviso"></div>
 
@@ -824,15 +873,16 @@ async function cargarHist(manual){
 let modoF='todo';
 let accesoOk=false; /* clave para Historial y En vivo: se pide una vez cada vez que se abre la app */
 function verVista(v){
-  if((v==='hist'||v==='vivo') && !accesoOk){
-    const k=prompt('Ingresa la clave para ver '+(v==='hist'?'el Historial':'En vivo')+':'); if(k===null) return;
+  if((v==='hist'||v==='vivo'||v==='mapa') && !accesoOk){
+    const k=prompt('Ingresa la clave para ver '+(v==='hist'?'el Historial':v==='mapa'?'el Mapa':'En vivo')+':'); if(k===null) return;
     if(k.trim()!==CLAVE_BORRAR) return alert('Clave incorrecta.');
     accesoOk=true;
   }
-  vForm.hidden = v!=='form'; vHist.hidden = v!=='hist'; vVivo.hidden = v!=='vivo';
+  vForm.hidden = v!=='form'; vHist.hidden = v!=='hist'; vVivo.hidden = v!=='vivo'; vMapa.hidden = v!=='mapa'; tabMapa.classList.toggle('sel',v==='mapa');
   tabForm.classList.toggle('sel',v==='form'); tabHist.classList.toggle('sel',v==='hist'); tabVivo.classList.toggle('sel',v==='vivo');
   if(v==='hist'){ mostrarHist(); cargarHist(); }
   if(v==='vivo'){ mostrarVivo(); cargarVivo(); }
+  if(v==='mapa'){ mpAbrir(); }
   scrollTo(0,0);
 }
 
@@ -1287,6 +1337,155 @@ function verLogo(){ location.hash='logo'; }
 function revisarLogo(){ var d=document.getElementById('logoGrande'); if(d) d.style.display = location.hash==='#logo' ? 'flex' : 'none'; }
 window.addEventListener('hashchange', revisarLogo);
 if(location.hash==='#logo'){ history.replaceState(null,'',location.pathname+location.search); }
+/* ====== MAPA DE LA MINA ====== */
+const MP_NS='http://www.w3.org/2000/svg';
+let mpBbox=[-70.86,-28.34,-70.75,-28.25], mpEqs=[], mpMov=false, mpSelI=-1, mpT=null, mpS=2, mpTX=0, mpTY=0, mpFotoFecha='';
+function mpXY(lat,lon){ return {x:(lon-mpBbox[0])/(mpBbox[2]-mpBbox[0])*1100, y:(mpBbox[3]-lat)/(mpBbox[3]-mpBbox[1])*1000}; }
+function mpLL(x,y){ return {lat:mpBbox[3]-y/1000*(mpBbox[3]-mpBbox[1]), lon:mpBbox[0]+x/1100*(mpBbox[2]-mpBbox[0])}; }
+function mpEl(t,a,p){ const e=document.createElementNS(MP_NS,t); for(const k in a) e.setAttribute(k,a[k]); if(p) p.appendChild(e); return e; }
+function mpCapa(k,b){ const on=!b.classList.contains('on'); b.classList.toggle('on',on); ({foto:mpFoto,cam:mpCam,eq:mpEq,cx:mpCx})[k].style.display=on?'':'none'; }
+
+/* mejora de la foto: quita neblina, sube contraste y nitidez */
+function mpMejorar(src){ return new Promise(res=>{ const im=new Image(); im.onload=()=>{
+  const w=im.width,h=im.height,c=document.createElement('canvas'); c.width=w; c.height=h; const g=c.getContext('2d'); g.drawImage(im,0,0);
+  const d=g.getImageData(0,0,w,h), a=d.data, n=w*h;
+  for(let ch=0;ch<3;ch++){ const hs=new Uint32Array(256); for(let i=ch;i<a.length;i+=4) hs[a[i]]++;
+    let lo=0,hi=255,s=0; while(s+hs[lo]<n*.005){s+=hs[lo];lo++;} s=0; while(s+hs[hi]<n*.005){s+=hs[hi];hi--;}
+    const k=255/Math.max(1,hi-lo); for(let i=ch;i<a.length;i+=4){ let v=(a[i]-lo)*k; v=255*Math.pow(Math.max(0,Math.min(1,v/255)),0.92); a[i]=v; } }
+  const b=new Uint8ClampedArray(a); // nitidez (máscara de enfoque)
+  for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++){ const i=(y*w+x)*4;
+    for(let ch=0;ch<3;ch++){ const j=i+ch, m=(b[j-4]+b[j+4]+b[j-w*4]+b[j+w*4])/4; a[j]=b[j]+0.9*(b[j]-m); } }
+  g.putImageData(d,0,0); res(c.toDataURL('image/jpeg',0.92)); }; im.onerror=()=>res(src); im.src=src; }); }
+
+async function mpCargarFoto(){
+  const fc=await kvGet('mapaFoto').catch(()=>null);
+  if(fc&&fc.img){ mpFoto.setAttribute('href',fc.img); mpFotoFecha=fc.fecha; }
+  try{ const j=await (await fetch(API+'?accion=mapaFoto')).json();
+    if(j.ok && j.fecha!==mpFotoFecha){ if(j.bbox) mpBbox=j.bbox; const img=await mpMejorar(j.foto); mpFoto.setAttribute('href',img); mpFotoFecha=j.fecha; kvSet('mapaFoto',{img,fecha:j.fecha}); }
+  }catch(e){}
+}
+function mpDibCaminos(cam){
+  mpCamB.innerHTML=''; mpCamT.innerHTML='';
+  cam.forEach(c=>{ const p=mpXY(c[0],c[1]); mpEl('circle',{cx:p.x.toFixed(1),cy:p.y.toFixed(1),r:2.3,fill:'#23272b'},mpCamB); mpEl('circle',{cx:p.x.toFixed(1),cy:p.y.toFixed(1),r:1.45,fill:'#dcdcdc'},mpCamT); });
+}
+function mpDibEq(){
+  mpEq.innerHTML='';
+  mpEqs.forEach((q,i)=>{ const p=mpXY(q.lat,q.lon), col=q.t==='pala'?'#e53935':'#8e24aa';
+    const g=mpEl('g',{transform:'translate('+p.x+','+p.y+')'},mpEq);
+    if(mpMov) mpEl('circle',{r:14,fill:'none',stroke:'#fff','stroke-width':1.5,'stroke-dasharray':'3 2'},g);
+    mpEl('circle',{r:9,fill:col,stroke:'#fff','stroke-width':2},g);
+    mpEl('text',{y:3.5,'text-anchor':'middle','font-size':10,'font-weight':800,fill:'#fff'},g).textContent=q.t==='pala'?'P':'C';
+    mpEl('text',{x:12,y:-9,'font-size':11,'font-weight':700,fill:'#fff',stroke:'#000','stroke-width':3,'paint-order':'stroke'},g).textContent=q.n;
+    g.addEventListener('pointerdown',ev=>{ if(!mpMov) return; ev.stopPropagation(); mpArr={i}; mpSelI=i; mpVerSel(); });
+  });
+}
+function mpDibCx(lista){
+  mpCx.innerHTML='';
+  lista.forEach(c=>{ const p=mpXY(c.lat,c.lon), viejo=(Date.now()-c.ms)>5*60000;
+    const g=mpEl('g',{transform:'translate('+p.x+','+p.y+')'},mpCx);
+    mpEl('circle',{r:13,fill:viejo?'#9a8a4a':'#ffc20e',stroke:'#111','stroke-width':2.5},g);
+    mpEl('text',{y:4,'text-anchor':'middle','font-size':String(c.caex).length>3?9.5:11,'font-weight':900,fill:'#111'},g).textContent=c.caex;
+    g.addEventListener('pointerdown',ev=>{ ev.stopPropagation(); mpSel.innerHTML='🚚 <b>CAEX '+c.caex+'</b> · '+(c.operador||'')+' · última posición '+c.hora; });
+  });
+}
+function mpVerSel(){
+  if(mpSelI<0||!mpEqs[mpSelI]){ mpSel.innerHTML=''; return; }
+  const q=mpEqs[mpSelI]; mpSel.innerHTML='<b>'+q.n+'</b> · '+(q.t==='pala'?'Pala':'Cargador frontal')+(mpMov?'<button onclick="mpQuitar()">🗑 Quitar</button>':'');
+}
+function mpQuitar(){ if(mpSelI<0) return; mpEqs.splice(mpSelI,1); mpSelI=-1; mpDibEq(); mpVerSel(); }
+async function mpCargar(manual){
+  try{ const j=await (await fetch(API+'?accion=mapa')).json();
+    if(j.ok){ if(j.bbox) mpBbox=j.bbox; if(!mpMov){ mpEqs=j.equipos||[]; mpDibEq(); } mpDibCaminos(j.caminos||[]); mpDibCx(j.caex||[]);
+      mpInfo.textContent='Foto satelital del '+(j.fecha||mpFotoFecha||'—')+' · '+(j.caex||[]).length+' CAEX con GPS · se actualiza cada 20 s'; kvSet('mapaDatos',j); return; }
+  }catch(e){}
+  const j=await kvGet('mapaDatos').catch(()=>null);
+  if(j){ mpEqs=j.equipos||[]; mpDibEq(); mpDibCaminos(j.caminos||[]); mpDibCx(j.caex||[]); }
+  mpInfo.textContent='Sin señal: se muestra lo último guardado.';
+}
+function mpAbrir(){ mpAplicar(); mpCargarFoto(); mpCargar(); clearInterval(mpT); mpT=setInterval(()=>{ if(!vMapa.hidden) mpCargar(); else clearInterval(mpT); },20000); }
+function mpMover(){
+  if(!mpMov){
+    const k=prompt('Clave para mover los equipos de carguío:'); if(k===null) return;
+    if(k.trim()!==CLAVE_BORRAR) return alert('Clave incorrecta.');
+    mpClave=k.trim(); mpMov=true; mpMover_.call();
+  } else mpFijar();
+}
+let mpClave='', mpArr=null;
+function mpMover_(){ mpMoverBtn(); mpDibEq(); mpVerSel(); aviso('Arrastra los equipos a su lugar'); }
+function mpMoverBtn(){ const b=document.getElementById('mpMover'); b.textContent=mpMov?'DEJAR FIJOS':'MOVER EQUIPOS DE CARGUÍO'; b.classList.toggle('mov',mpMov); mpAdd.hidden=!mpMov; }
+async function mpFijar(){
+  try{ const j=await (await fetch(API,{method:'POST',body:JSON.stringify({accion:'mapaEquipos',clave:mpClave,equipos:mpEqs})})).json();
+    if(!j.ok) return alert('No se pudo guardar: '+(j.error||''));
+    mpMov=false; mpAddTipo(null); mpMoverBtn(); mpDibEq(); mpVerSel(); aviso('Equipos guardados ✔');
+  }catch(e){ alert('Sin señal. Intenta de nuevo con señal.'); }
+}
+function mpAgregar(t){ mpAddTipo(mpAdd_===t?null:t); }
+let mpAdd_=null;
+function mpAddTipo(t){ mpAdd_=t; mpAddP.classList.toggle('on',t==='pala'); mpAddC.classList.toggle('on',t==='carg');
+  mpAddP.textContent=t==='pala'?'Toca el mapa…':'＋ Pala'; mpAddC.textContent=t==='carg'?'Toca el mapa…':'＋ Cargador'; }
+/* zoom y arrastre */
+let mpPtr={}, mpPan=null, mpPinch=null;
+function mpAplicar(){ mpVp.setAttribute('transform','translate('+mpTX+','+mpTY+') scale('+mpS+')'); }
+function mpPt(ev){ const r=mpSvg.getBoundingClientRect(), s=Math.max(1100/r.width,1000/r.height), ox=(r.width*s-1100)/2, oy=(r.height*s-1000)/2; return {x:(ev.clientX-r.left)*s-ox, y:(ev.clientY-r.top)*s-oy}; }
+function mpMapa(p){ return {x:(p.x-mpTX)/mpS, y:(p.y-mpTY)/mpS}; }
+function mpLim(){ mpTX=Math.min(0,Math.max(1100-1100*mpS,mpTX)); mpTY=Math.min(0,Math.max(1000-1000*mpS,mpTY)); }
+function mpZoomEn(f,p){ const ns=Math.max(1,Math.min(10,mpS*f)); mpTX=p.x-(p.x-mpTX)*ns/mpS; mpTY=p.y-(p.y-mpTY)*ns/mpS; mpS=ns; mpLim(); mpAplicar(); }
+function mpZoomBtn(f){ mpZoomEn(f,{x:550,y:500}); }
+function mpCentrar(){ const c=mpXY(-28.29607,-70.80603); mpS=2.2; mpTX=550-c.x*mpS; mpTY=500-c.y*mpS; mpLim(); mpAplicar(); }
+mpSvg.addEventListener('pointerdown',ev=>{ mpPtr[ev.pointerId]=mpPt(ev); const k=Object.keys(mpPtr);
+  if(k.length===2){ const a=mpPtr[k[0]],b=mpPtr[k[1]]; mpPinch={d:Math.hypot(a.x-b.x,a.y-b.y)}; mpArr=null; mpPan=null; return; }
+  if(mpMov && mpAdd_){ const m=mpMapa(mpPt(ev)), ll=mpLL(m.x,m.y), t=mpAdd_;
+    mpEqs.push({n:(t==='pala'?'Pala ':'Cargador ')+(mpEqs.filter(q=>q.t===t).length+1), t, lat:ll.lat, lon:ll.lon}); mpSelI=mpEqs.length-1; mpAddTipo(null); mpDibEq(); mpVerSel(); return; }
+  if(!mpArr) mpPan={p:mpPt(ev),tx:mpTX,ty:mpTY}; });
+mpSvg.addEventListener('pointermove',ev=>{ if(!(ev.pointerId in mpPtr)) return; mpPtr[ev.pointerId]=mpPt(ev); const k=Object.keys(mpPtr);
+  if(mpPinch && k.length===2){ const a=mpPtr[k[0]],b=mpPtr[k[1]],d=Math.hypot(a.x-b.x,a.y-b.y); mpZoomEn(d/mpPinch.d,{x:(a.x+b.x)/2,y:(a.y+b.y)/2}); mpPinch.d=d; return; }
+  if(mpArr){ const m=mpMapa(mpPt(ev)), ll=mpLL(m.x,m.y); mpEqs[mpArr.i].lat=ll.lat; mpEqs[mpArr.i].lon=ll.lon; mpDibEq(); }
+  else if(mpPan){ const p=mpPt(ev); mpTX=mpPan.tx+p.x-mpPan.p.x; mpTY=mpPan.ty+p.y-mpPan.p.y; mpLim(); mpAplicar(); } });
+function mpUp(ev){ delete mpPtr[ev.pointerId]; if(Object.keys(mpPtr).length<2) mpPinch=null; mpArr=null; mpPan=null; }
+mpSvg.addEventListener('pointerup',mpUp); mpSvg.addEventListener('pointercancel',mpUp);
+mpSvg.addEventListener('wheel',ev=>{ ev.preventDefault(); mpZoomEn(ev.deltaY<0?1.2:1/1.2,mpPt(ev)); },{passive:false});
+mpCentrar();
+
+/* ====== GPS del CAEX: parte al marcar la salida y se apaga al cerrar el turno ====== */
+let gpsWatch=null, gpsUlt=null, gpsBuf=[], gpsEnvio=0, gpsCaex='', gpsOp='';
+function gpsApagadoPorUsuario(){ try{ return localStorage.getItem('gpsOff')==='1'; }catch(e){ return false; } }
+function gpsBarra(){
+  const b=document.getElementById('gpsBar'); if(!b) return;
+  const turno=draft && draft.horaInicio && draft.caex;
+  b.hidden=!turno; if(!turno) return;
+  const on=!!gpsWatch; b.className='gpsbar '+(on?'on':'off');
+  b.innerHTML='<b>📍 GPS '+(on?'ACTIVO':'APAGADO')+'</b><span style="font-size:12px;color:var(--sub)">'+(on&&gpsUlt?'enviado '+gpsUlt:'')+'</span><button onclick="gpsCambiar()">'+(on?'Apagar':'Encender')+'</button>';
+}
+function gpsCambiar(){ if(gpsWatch){ try{localStorage.setItem('gpsOff','1');}catch(e){} gpsParar(true); } else { try{localStorage.removeItem('gpsOff');}catch(e){} gpsIniciar(); } }
+function gpsIniciar(){
+  if(gpsWatch || !navigator.geolocation) return;
+  gpsCaex=String(draft.caex); gpsOp=draft.operador||'';
+  gpsWatch=navigator.geolocation.watchPosition(p=>{
+    if(p.coords.accuracy>60) return;
+    gpsBuf.push([+p.coords.latitude.toFixed(6), +p.coords.longitude.toFixed(6)]);
+    if(Date.now()-gpsEnvio>30000) gpsMandar();
+  }, e=>{ if(e.code===1){ aviso('Activa el permiso de ubicación para el GPS'); gpsParar(false); } }, {enableHighAccuracy:true, maximumAge:5000, timeout:30000});
+  gpsBarra();
+}
+async function gpsMandar(){
+  if(!gpsBuf.length) return; gpsEnvio=Date.now();
+  const pts=gpsBuf.splice(0), u=pts[pts.length-1];
+  try{ const j=await (await fetch(API,{method:'POST',body:JSON.stringify({accion:'gps',caex:gpsCaex,operador:gpsOp,lat:u[0],lon:u[1],puntos:pts})})).json();
+    if(j.ok){ gpsUlt=ahora(); gpsBarra(); } else gpsBuf.unshift(...pts.slice(-50)); }catch(e){ gpsBuf.unshift(...pts.slice(-50)); }
+}
+function gpsParar(avisarFin){
+  if(gpsWatch!==null) navigator.geolocation.clearWatch(gpsWatch); gpsWatch=null;
+  if(avisarFin && gpsCaex) fetch(API,{method:'POST',body:JSON.stringify({accion:'gpsFin',caex:gpsCaex})}).catch(()=>{});
+  gpsBarra();
+}
+setInterval(()=>{
+  const turno=draft && draft.horaInicio && draft.caex;
+  if(turno && !gpsWatch && !gpsApagadoPorUsuario()) gpsIniciar();
+  if(!turno && gpsWatch){ gpsParar(true); try{localStorage.removeItem('gpsOff');}catch(e){} }
+  if(gpsWatch && gpsBuf.length && Date.now()-gpsEnvio>30000) gpsMandar();
+  gpsBarra();
+},5000);
+
 </script>
 </body>
 </html>
