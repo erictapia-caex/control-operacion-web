@@ -1456,19 +1456,31 @@ mpSvg.addEventListener('pointerup',mpUp); mpSvg.addEventListener('pointercancel'
 mpSvg.addEventListener('wheel',ev=>{ ev.preventDefault(); mpZoomEn(ev.deltaY<0?1.2:1/1.2,mpPt(ev)); },{passive:false});
 
 /* ====== GPS del CAEX: parte al marcar la salida y se apaga al cerrar el turno ====== */
-let gpsWatch=null, gpsUlt=null, gpsBuf=[], gpsEnvio=0, gpsCaex='', gpsOp='';
+let gpsWatch=null, gpsUlt=null, gpsBuf=[], gpsEnvio=0, gpsCaex='', gpsOp='', gpsIniciando=false, gpsNegado=false;
+const gpsNativo = !!(window.flutter_inappwebview && window.flutter_inappwebview.callHandler);
 function gpsApagadoPorUsuario(){ try{ return localStorage.getItem('gpsOff')==='1'; }catch(e){ return false; } }
 function gpsBarra(){
   const b=document.getElementById('gpsBar'); if(!b) return;
   const turno=draft && draft.horaInicio && draft.caex;
   b.hidden=!turno; if(!turno) return;
   const on=!!gpsWatch; b.className='gpsbar '+(on?'on':'off');
-  b.innerHTML='<b>📍 GPS '+(on?'ACTIVO':'APAGADO')+'</b><span style="font-size:12px;color:var(--sub)">'+(on&&gpsUlt?'enviado '+gpsUlt:'')+'</span><button onclick="gpsCambiar()">'+(on?'Apagar':'Encender')+'</button>';
+  b.innerHTML='<b>📍 GPS '+(on?'ACTIVO':'APAGADO')+'</b><span style="font-size:12px;color:var(--sub)">'+(on?(gpsNativo?'funciona con la app cerrada':(gpsUlt?'enviado '+gpsUlt:'')):'')+'</span><button onclick="gpsCambiar()">'+(on?'Apagar':'Encender')+'</button>';
 }
-function gpsCambiar(){ if(gpsWatch){ try{localStorage.setItem('gpsOff','1');}catch(e){} gpsParar(true); } else { try{localStorage.removeItem('gpsOff');}catch(e){} gpsIniciar(); } }
-function gpsIniciar(){
-  if(gpsWatch || !navigator.geolocation) return;
+function gpsCambiar(){ gpsNegado=false; if(gpsWatch){ try{localStorage.setItem('gpsOff','1');}catch(e){} gpsParar(true); } else { try{localStorage.removeItem('gpsOff');}catch(e){} gpsIniciar(); } }
+async function gpsIniciar(){
+  if(gpsWatch || gpsIniciando || gpsNegado) return;
   gpsCaex=String(draft.caex); gpsOp=draft.operador||'';
+  if(gpsNativo){
+    gpsIniciando=true;
+    try{
+      let primera=false; try{ primera=!localStorage.getItem('gpsPermisosVistos'); localStorage.setItem('gpsPermisosVistos','1'); }catch(e){}
+      if(primera) alert('📍 GPS del CAEX\n\nAhora el celular te pedirá unos permisos (solo esta vez):\n\n1) Ubicación: elige "Permitir todo el tiempo" (o "Mientras se usa la app" y luego "Permitir todo el tiempo").\n2) Notificaciones: Permitir.\n3) Batería: Permitir.\n4) Si se abre "Inicio automático", activa Operadores y vuelve con el botón atrás.');
+      const ok=await window.flutter_inappwebview.callHandler('gps', JSON.stringify({accion:'iniciar', caex:gpsCaex, operador:gpsOp, api:API}));
+      if(ok){ gpsWatch='nativo'; } else { gpsNegado=true; aviso('Sin permiso de ubicación: el GPS quedó apagado'); }
+    }catch(e){ gpsNegado=true; }
+    gpsIniciando=false; gpsBarra(); return;
+  }
+  if(!navigator.geolocation) return;
   gpsWatch=navigator.geolocation.watchPosition(p=>{
     if(p.coords.accuracy>60) return;
     gpsBuf.push([+p.coords.latitude.toFixed(6), +p.coords.longitude.toFixed(6)]);
@@ -1483,7 +1495,9 @@ async function gpsMandar(){
     if(j.ok){ gpsUlt=ahora(); gpsBarra(); } else gpsBuf.unshift(...pts.slice(-50)); }catch(e){ gpsBuf.unshift(...pts.slice(-50)); }
 }
 function gpsParar(avisarFin){
-  if(gpsWatch!==null) navigator.geolocation.clearWatch(gpsWatch); gpsWatch=null;
+  if(gpsWatch==='nativo'){ try{ window.flutter_inappwebview.callHandler('gps', JSON.stringify({accion:'parar'})); }catch(e){} }
+  else if(gpsWatch!==null) navigator.geolocation.clearWatch(gpsWatch);
+  gpsWatch=null;
   if(avisarFin && gpsCaex) fetch(API,{method:'POST',body:JSON.stringify({accion:'gpsFin',caex:gpsCaex})}).catch(()=>{});
   gpsBarra();
 }
