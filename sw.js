@@ -1,4 +1,4 @@
-const CACHE = 'ro-v40';
+const CACHE = 'ro-v41';
 const ARCHIVOS = ['./', 'index.html', 'manifest.json', 'icono-192.png', 'icono-512.png', 'banner.jpg', 'icono-maskable.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS))); self.skipWaiting(); });
 self.addEventListener('activate', e => {

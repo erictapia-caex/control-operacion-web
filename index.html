@@ -251,6 +251,10 @@ textarea{width:100%;font:inherit;font-size:16px;padding:12px;border-radius:10px;
 #mpMover.mov{background:#e5484d!important;border-color:#e5484d!important}
 #mpAdd{display:flex;flex-direction:column;gap:6px}#mpAdd[hidden]{display:none}
 #mpAdd button{font-size:12px!important;padding:10px 2px!important}
+#mpLeyenda{display:flex;flex-direction:column;gap:4px}
+#mpLado #mpLeyenda button.ley{font-size:14px;padding:6px 2px;display:flex;align-items:center;justify-content:center;gap:6px}
+#mpLeyenda .ley span{width:14px;height:14px;border-radius:50%;border:2px solid #fff;flex:none}
+#mpLeyenda .ley.fuera{opacity:.45}
 #mpAbajo{position:absolute;left:8px;right:94px;bottom:calc(8px + env(safe-area-inset-bottom));pointer-events:none}
 #mpSel:not(:empty){pointer-events:auto;display:inline-block;background:rgba(14,17,21,.9);padding:8px 10px;border-radius:10px;font-size:14px;margin-bottom:6px}
 #mpSel button{margin-left:8px;padding:4px 10px;border-radius:8px;border:0;background:#e5484d;color:#fff;font-weight:800}
@@ -294,6 +298,7 @@ textarea{width:100%;font:inherit;font-size:16px;padding:12px;border-radius:10px;
       <button id="mpBCx" class="on" onclick="mpCapa('cx',this)">🚚<i>CAEX</i></button>
       <span class="sep"></span>
       <button id="mpMover" onclick="mpMover()">MOVER EQUIPOS DE CARGUÍO</button>
+      <div id="mpLeyenda"></div>
       <div id="mpAdd" hidden>
         <button id="mpAddP" onclick="mpAgregar('pala')">＋ Pala</button>
         <button id="mpAddC" onclick="mpAgregar('carg')">＋ Cargador</button>
@@ -1377,15 +1382,30 @@ function mpDibCaminos(cam){
 }
 function mpDibEq(){
   mpEq.innerHTML='';
-  mpEqs.forEach((q,i)=>{ const p=mpXY(q.lat,q.lon), col=q.t==='pala'?'#e53935':'#8e24aa';
+  mpEqs.forEach((q,i)=>{ const p=mpXY(q.lat,q.lon), col=mpColor(q);
     const g=mpEl('g',{transform:'translate('+p.x+','+p.y+')'},mpEq);
-    if(mpMov) mpEl('circle',{r:14,fill:'none',stroke:'#fff','stroke-width':1.5,'stroke-dasharray':'3 2'},g);
-    mpEl('circle',{r:9,fill:col,stroke:'#fff','stroke-width':2},g);
-    mpEl('text',{y:3.5,'text-anchor':'middle','font-size':10,'font-weight':800,fill:'#fff'},g).textContent=q.t==='pala'?'P':'C';
-    mpEl('text',{x:12,y:-9,'font-size':11,'font-weight':700,fill:'#fff',stroke:'#000','stroke-width':3,'paint-order':'stroke'},g).textContent=q.n;
-    g.addEventListener('pointerdown',ev=>{ if(!mpMov) return; ev.stopPropagation(); mpArr={i}; mpSelI=i; mpVerSel(); });
+    if(mpMov) mpEl('circle',{r:11,fill:'none',stroke:'#fff','stroke-width':1.3,'stroke-dasharray':'3 2'},g);
+    mpEl('circle',{r:6.5,fill:col,stroke:'#fff','stroke-width':1.8},g);
+    g.addEventListener('pointerdown',ev=>{ ev.stopPropagation(); mpSelI=i; mpVerSel(); if(!mpMov) return; mpArr={i}; });
   });
+  mpLey();
 }
+/* Equipos de carguio fijos: cada uno con su color; en el mapa solo el circulo, al lado la lista con el numero */
+const MP_EQ=[{n:'202',t:'pala',c:'#e53935'},{n:'203',t:'pala',c:'#1e88e5'},{n:'213',t:'pala',c:'#43a047'},{n:'306',t:'carg',c:'#8e24aa'},{n:'307',t:'carg',c:'#00acc1'}];
+function mpEqDe(n){ return MP_EQ.find(e=>e.n===String(n)); }
+function mpColor(q){ const e=mpEqDe(q.n); return e?e.c:'#9e9e9e'; }
+function mpNormalizar(lista){
+  lista=(lista||[]).map(q=>Object.assign({},q));
+  const usados=new Set(lista.filter(q=>mpEqDe(q.n)).map(q=>String(q.n)));
+  lista.forEach(q=>{ if(mpEqDe(q.n)) return; const l=MP_EQ.find(e=>e.t===q.t && !usados.has(e.n)); if(l){ q.n=l.n; usados.add(l.n); } });
+  return lista.filter(q=>mpEqDe(q.n)).map(q=>{ q.n=String(q.n); q.t=mpEqDe(q.n).t; return q; });
+}
+function mpLey(){ const d=document.getElementById('mpLeyenda'); if(!d) return;
+  d.innerHTML=MP_EQ.map(e=>{ const en=mpEqs.some(q=>q.n===e.n); return '<button class="ley'+(mpAdd_===e.n?' on':'')+(en?'':' fuera')+'" onclick="mpLeyTap(\''+e.n+'\')"><span style="background:'+e.c+'"></span>'+e.n+'</button>'; }).join(''); }
+function mpLeyTap(n){ const i=mpEqs.findIndex(q=>q.n===n), e=mpEqDe(n), nom=(e.t==='pala'?'Pala ':'Cargador ')+n;
+  if(i>=0){ mpSelI=i; mpVerSel(); if(mpMov) aviso('Arrastra el círculo de la '+nom); return; }
+  if(!mpMov) return aviso(nom+' no está en el mapa');
+  mpAdd_=(mpAdd_===n?null:n); mpLey(); if(mpAdd_) aviso('Toca el mapa donde está la '+nom); }
 function mpDibCx(lista){
   mpCx.innerHTML='';
   lista.forEach(c=>{ const p=mpXY(c.lat,c.lon), viejo=(Date.now()-c.ms)>5*60000;
@@ -1397,16 +1417,16 @@ function mpDibCx(lista){
 }
 function mpVerSel(){
   if(mpSelI<0||!mpEqs[mpSelI]){ mpSel.innerHTML=''; return; }
-  const q=mpEqs[mpSelI]; mpSel.innerHTML='<b>'+q.n+'</b> · '+(q.t==='pala'?'Pala':'Cargador frontal')+(mpMov?'<button onclick="mpQuitar()">🗑 Quitar</button>':'');
+  const q=mpEqs[mpSelI]; mpSel.innerHTML='<span style="display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid #fff;vertical-align:-1px;margin-right:6px;background:'+mpColor(q)+'"></span><b>'+(q.t==='pala'?'Pala ':'Cargador ')+q.n+'</b>'+(mpMov?'<button onclick="mpQuitar()">🗑 Quitar</button>':'');
 }
 function mpQuitar(){ if(mpSelI<0) return; mpEqs.splice(mpSelI,1); mpSelI=-1; mpDibEq(); mpVerSel(); }
 async function mpCargar(manual){
   try{ const j=await (await fetch(API+'?accion=mapa')).json();
-    if(j.ok){ if(j.bbox) mpBbox=j.bbox; if(!mpMov){ mpEqs=j.equipos||[]; mpDibEq(); } mpDibCaminos(j.caminos||[]); mpDibCx(j.caex||[]);
+    if(j.ok){ if(j.bbox) mpBbox=j.bbox; if(!mpMov){ mpEqs=mpNormalizar(j.equipos); mpDibEq(); } mpDibCaminos(j.caminos||[]); mpDibCx(j.caex||[]);
       mpInfo.textContent='Foto satelital del '+(j.fecha||mpFotoFecha||'—')+' · '+(j.caex||[]).length+' CAEX con GPS · se actualiza cada 20 s'; kvSet('mapaDatos',j); return; }
   }catch(e){}
   const j=await kvGet('mapaDatos').catch(()=>null);
-  if(j){ mpEqs=j.equipos||[]; mpDibEq(); mpDibCaminos(j.caminos||[]); mpDibCx(j.caex||[]); }
+  if(j){ mpEqs=mpNormalizar(j.equipos); mpDibEq(); mpDibCaminos(j.caminos||[]); mpDibCx(j.caex||[]); }
   mpInfo.textContent='Sin señal: se muestra lo último guardado.';
 }
 function mpAbrir(){ requestAnimationFrame(mpCentrar); mpCargarFoto(); mpCargar(); clearInterval(mpT); mpT=setInterval(()=>{ if(!vMapa.hidden) mpCargar(); else clearInterval(mpT); },20000); }
@@ -1418,8 +1438,8 @@ function mpMover(){
   } else mpFijar();
 }
 let mpClave='', mpArr=null;
-function mpMover_(){ mpMoverBtn(); mpDibEq(); mpVerSel(); aviso('Arrastra los equipos a su lugar'); }
-function mpMoverBtn(){ const b=document.getElementById('mpMover'); b.textContent=mpMov?'DEJAR FIJOS':'MOVER EQUIPOS DE CARGUÍO'; b.classList.toggle('mov',mpMov); mpAdd.hidden=!mpMov; }
+function mpMover_(){ mpMoverBtn(); mpDibEq(); mpVerSel(); aviso('Arrastra los círculos. Para poner uno que falta, tócalo en la lista y después el mapa'); }
+function mpMoverBtn(){ const b=document.getElementById('mpMover'); b.textContent=mpMov?'DEJAR FIJOS':'MOVER EQUIPOS DE CARGUÍO'; b.classList.toggle('mov',mpMov); mpAdd.hidden=true; mpLey(); }
 async function mpFijar(){
   try{ const j=await (await fetch(API,{method:'POST',body:JSON.stringify({accion:'mapaEquipos',clave:mpClave,equipos:mpEqs})})).json();
     if(!j.ok) return alert('No se pudo guardar: '+(j.error||''));
@@ -1428,7 +1448,7 @@ async function mpFijar(){
 }
 function mpAgregar(t){ mpAddTipo(mpAdd_===t?null:t); }
 let mpAdd_=null;
-function mpAddTipo(t){ mpAdd_=t; mpAddP.classList.toggle('on',t==='pala'); mpAddC.classList.toggle('on',t==='carg');
+function mpAddTipo(t){ mpAdd_=t; mpLey(); mpAddP.classList.toggle('on',t==='pala'); mpAddC.classList.toggle('on',t==='carg');
   mpAddP.textContent=t==='pala'?'Toca el mapa…':'＋ Pala'; mpAddC.textContent=t==='carg'?'Toca el mapa…':'＋ Cargador'; }
 /* zoom y arrastre */
 let mpPtr={}, mpPan=null, mpPinch=null;
@@ -1444,8 +1464,8 @@ function mpCentrar(){ const v=mpVis(), c=mpXY(-28.29607,-70.80603); mpS=1.6; mpT
 window.addEventListener('popstate',()=>{ if(!vMapa.hidden){ if(mpMov && !confirm('Tienes equipos movidos sin guardar. ¿Salir igual?')){ try{ history.pushState({mapa:1},''); }catch(e){} return; } mpMov=false; mpAddTipo(null); mpMoverBtn(); verVista(mpPrev); } });
 mpSvg.addEventListener('pointerdown',ev=>{ mpPtr[ev.pointerId]=mpPt(ev); const k=Object.keys(mpPtr);
   if(k.length===2){ const a=mpPtr[k[0]],b=mpPtr[k[1]]; mpPinch={d:Math.hypot(a.x-b.x,a.y-b.y)}; mpArr=null; mpPan=null; return; }
-  if(mpMov && mpAdd_){ const m=mpMapa(mpPt(ev)), ll=mpLL(m.x,m.y), t=mpAdd_;
-    mpEqs.push({n:(t==='pala'?'Pala ':'Cargador ')+(mpEqs.filter(q=>q.t===t).length+1), t, lat:ll.lat, lon:ll.lon}); mpSelI=mpEqs.length-1; mpAddTipo(null); mpDibEq(); mpVerSel(); return; }
+  if(mpMov && mpAdd_ && mpEqDe(mpAdd_)){ const m=mpMapa(mpPt(ev)), ll=mpLL(m.x,m.y), e=mpEqDe(mpAdd_);
+    if(!mpEqs.some(q=>q.n===e.n)) mpEqs.push({n:e.n, t:e.t, lat:ll.lat, lon:ll.lon}); mpSelI=mpEqs.findIndex(q=>q.n===e.n); mpAddTipo(null); mpDibEq(); mpVerSel(); return; }
   if(!mpArr) mpPan={p:mpPt(ev),tx:mpTX,ty:mpTY}; });
 mpSvg.addEventListener('pointermove',ev=>{ if(!(ev.pointerId in mpPtr)) return; mpPtr[ev.pointerId]=mpPt(ev); const k=Object.keys(mpPtr);
   if(mpPinch && k.length===2){ const a=mpPtr[k[0]],b=mpPtr[k[1]],d=Math.hypot(a.x-b.x,a.y-b.y); mpZoomEn(d/mpPinch.d,{x:(a.x+b.x)/2,y:(a.y+b.y)/2}); mpPinch.d=d; return; }
