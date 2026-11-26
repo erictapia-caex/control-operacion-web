@@ -1391,7 +1391,7 @@ function mpDibEq(){
   mpLey();
 }
 /* Equipos de carguio fijos: cada uno con su color; en el mapa solo el circulo, al lado la lista con el numero */
-const MP_EQ=[{n:'202',t:'pala',c:'#e53935'},{n:'203',t:'pala',c:'#1e88e5'},{n:'213',t:'pala',c:'#43a047'},{n:'306',t:'carg',c:'#8e24aa'},{n:'307',t:'carg',c:'#00acc1'}];
+const MP_EQ=[{n:'202',t:'pala',c:'#e53935'},{n:'203',t:'pala',c:'#1e88e5'},{n:'213',t:'pala',c:'#43a047'},{n:'306',t:'carg',c:'#8e24aa'},{n:'307',t:'carg',c:'#fb8c00'}];
 function mpEqDe(n){ return MP_EQ.find(e=>e.n===String(n)); }
 function mpColor(q){ const e=mpEqDe(q.n); return e?e.c:'#9e9e9e'; }
 function mpNormalizar(lista){
